@@ -55,6 +55,8 @@ static struct argp_option options[] = {
     {"verbose", 'v', 0, 0, "Verbose output"},
     {"dimacs", 'd', 0, 0, "Read DIMACS format"},
     {"lad", 'l', 0, 0, "Read LAD format"},
+    {"bin-enrico", 'e', 0, 0, "Read bin from Enrico format"},
+    {"ioi", 'o', 0, 0, "Read ioi format"},
     {"connected", 'c', 0, 0, "Solve max common CONNECTED subgraph problem"},
     {"directed", 'i', 0, 0, "Use directed graphs"},
     {"labelled", 'a', 0, 0, "Use edge and vertex labels"},
@@ -70,6 +72,8 @@ static struct {
     bool verbose;
     bool dimacs;
     bool lad;
+    bool bin_enrico;
+    bool ioi;
     bool connected;
     bool directed;
     bool edge_labelled;
@@ -92,6 +96,8 @@ void set_default_arguments() {
     arguments.verbose = false;
     arguments.dimacs = false;
     arguments.lad = false;
+    arguments.bin_enrico = false;
+    arguments.ioi = false;
     arguments.connected = false;
     arguments.directed = false;
     arguments.edge_labelled = false;
@@ -109,14 +115,24 @@ void set_default_arguments() {
 static error_t parse_opt (int key, char *arg, struct argp_state *state) {
     switch (key) {
         case 'd':
-            if (arguments.lad)
-                fail("The -d and -l options cannot be used together.\n");
+            if (arguments.lad || arguments.bin_enrico || arguments.ioi)
+                fail("The -d, -l, -o and -e options cannot be used together.\n");
             arguments.dimacs = true;
             break;
         case 'l':
-            if (arguments.dimacs)
-                fail("The -d and -l options cannot be used together.\n");
+            if (arguments.dimacs || arguments.bin_enrico || arguments.ioi)
+                fail("The -d, -l, -o and -e options cannot be used together.\n");
             arguments.lad = true;
+            break;
+        case 'e':
+            if (arguments.dimacs || arguments.lad || arguments.ioi)
+                fail("The -d, -l, -o and -e options cannot be used together.\n");
+            arguments.bin_enrico = true;
+            break;
+        case 'o':
+            if (arguments.dimacs || arguments.lad || arguments.bin_enrico)
+                fail("The -d, -l, -o and -e options cannot be used together.\n");
+            arguments.ioi = true;
             break;
         case 'q':
             arguments.quiet = true;
@@ -765,6 +781,8 @@ void solve_nopar_recursive(Bidomain& bd, array<vector<int>, MAX_ARGS>& vv, std::
     const unsigned int& matching_size_goal, unsigned long long& my_thread_nodes,
     int bd_idx, int *nodi_inseriti, int n_nodi_inseriti)
 {
+    if (abort_due_to_timeout)
+        return;
     int w = -1;
     const int i_end = bd.len[n_nodi_inseriti] + 2; /* including the null */ //modificare
 
@@ -903,6 +921,8 @@ void help_solve_recursive(const int& i_end, array<vector<int>, MAX_ARGS>& help_v
                           unsigned long long& help_thread_nodes, const Position& position, HelpMe& help_me,
                           int help_bd_idx, int* nodi_inseriti, int n_nodi_inseriti)
 {
+    if (abort_due_to_timeout)
+        return;
     int help_w = -1;
 
     for (int i = 0; i < i_end /* not != */; i++) {
@@ -987,6 +1007,8 @@ void solve_recursive(const int& i_end, array<vector<int>, MAX_ARGS>& vv, Bidomai
                      unsigned long long& main_thread_nodes, const Position& position, HelpMe& help_me,
                      int bd_idx, int* nodi_inseriti, int n_nodi_inseriti)
 {
+    if (abort_due_to_timeout)
+        return;
     int w = -1;
 
     for (int i = 0; i < i_end /* not != */; i++) {
@@ -1528,7 +1550,7 @@ int main(int argc, char** argv) {
     argp_parse(&argp, argc, argv, 0, 0, 0);
     arguments.arg_num--;
 
-    char format = arguments.dimacs ? 'D' : arguments.lad ? 'L' : 'B';
+    char format = arguments.dimacs ? 'D' : arguments.lad ? 'L' : arguments.bin_enrico ? 'E' : arguments.ioi ? 'I' : 'B';
     vector<Graph> gi;
     for (int i = 0; i < arguments.arg_num; i++) {
         gi.push_back(readGraph(arguments.filenames[i], format, arguments.directed,

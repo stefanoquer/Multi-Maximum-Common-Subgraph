@@ -174,11 +174,86 @@ struct Graph readBinaryGraph(char* filename, bool directed, bool edge_labelled,
     return g;
 }
 
+int custom_read_word(FILE* fp) {
+  unsigned char a[2];
+  if (fread(a, 1, 2, fp) != 2) fail("Error reading file.\n");
+  return static_cast<int>(a[0]) | ((static_cast<int>(a[1])) << 8);
+}
+
+struct Graph read_bin_graph(const char* filename, bool directed, bool edge_labelled,
+                     bool vertex_labelled) {
+  Graph g(0);
+  FILE* f;
+
+  if ((f = fopen(filename, "rb")) == NULL) fail("Cannot open file");
+
+  int nvertices = custom_read_word(f);
+  g = Graph(nvertices);
+
+  // Labelling scheme: see
+  // https://github.com/ciaranm/cp2016-max-common-connected-subgraph-paper/blob/master/code/solve_max_common_subgraph.cc
+  int m = g.n * 33 / 100;
+  int p = 1;
+  int k1 = 0;
+  int k2 = 0;
+  while (p < m && k1 < 16) {
+    p *= 2;
+    k1 = k2;
+    k2++;
+  }
+
+  for (int i = 0; i < nvertices; i++) {
+    int label = (custom_read_word(f) >> (16 - k1));
+    if (vertex_labelled) g.label[i] |= label;
+  }
+
+  for (int i = 0; i < nvertices; i++) {
+    int len = custom_read_word(f);
+    for (int j = 0; j < len; j++) {
+      int target = custom_read_word(f);
+      int label = (custom_read_word(f) >> (16 - k1)) + 1;
+      add_edge(g, i, target, directed, edge_labelled ? label : 1);
+    }
+  }
+  fclose(f);
+  return g;
+}
+
+Graph read_ioi_graph(const char* filename, bool directed,
+                     bool vertex_labelled) {
+  FILE* f;
+
+  if ((f = fopen(filename, "r")) == NULL) fail("Cannot open file");
+
+  int n, m;
+
+  fscanf(f, "%d %d", &n, &m);
+
+  Graph g(n);
+
+  for (int i = 0; i < n; i++) {
+    int label;
+    fscanf(f, "%d", &label);
+    if (vertex_labelled) g.label[i] |= label;
+  }
+
+  for (int i = 0; i < m; i++) {
+    int v, w;
+    fscanf(f, "%d %d", &v, &w);
+    add_edge(g, v, w, directed, 1);
+  }
+
+  fclose(f);
+  return g;
+}
+
 struct Graph readGraph(char* filename, char format, bool directed, bool edge_labelled, bool vertex_labelled) {
     struct Graph g(0);
     if (format=='D') g = readDimacsGraph(filename, directed, vertex_labelled);
     else if (format=='L') g = readLadGraph(filename, directed);
     else if (format=='B') g = readBinaryGraph(filename, directed, edge_labelled, vertex_labelled);
+    else if (format=='E') g = read_bin_graph(filename, directed, edge_labelled, vertex_labelled);
+    else if (format=='I') g = read_ioi_graph(filename, directed, vertex_labelled);
     else fail("Unknown graph format\n");
     return g;
 }
