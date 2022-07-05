@@ -17,8 +17,8 @@ static void fail(std::string msg) {
 
 Graph::Graph(unsigned int n) {
     this->n = n;
-    label = std::vector<unsigned int>(n, 0u);
-    adjmat = {n, std::vector<unsigned int>(n, false)};
+    label.resize(n, 0u);
+    adjmat.resize(n, std::vector<unsigned int>(n, false));
 }
 
 Graph induced_subgraph(struct Graph& g, std::vector<int> vv) {
