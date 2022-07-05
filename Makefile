@@ -1,10 +1,8 @@
-CXX := g++
-CXXFLAGS := -O3 -march=native
-all: mcsp
+NVCC = /usr/local/cuda-11.6/bin/nvcc
+NVCCFLAGS = -arch=compute_86
 
-mcsp: mcsp-mt.cpp graph.cpp graph.h
-	$(CXX) $(CXXFLAGS) -Wall -std=c++11 -o mcsp graph.cpp mcsp-mt.cpp -pthread -g -ggdb3
+all:
+	$(NVCC) $(NVCCFLAGS) -O3 mcsp-mt.cu graph.cu -o mcsp
 
 clean:
-	rm -f v0.2_trimble_par_cpp
-	rm -f *.o
+	rm -f mcsp

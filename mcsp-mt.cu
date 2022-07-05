@@ -60,6 +60,8 @@ static struct argp_option options[] = {
     {"big-first", 'b', 0, 0, "First try to find an induced subgraph isomorphism, then decrement the target size"},
     {"timeout", 't', "timeout", 0, "Specify a timeout (seconds)"},
     {"threads", 'T', "threads", 0, "Specify how many threads to use"},
+    { "debug", 'D', 0, 0, "Stampa ulteriori dati per debug" },
+    { "buffer", 'B', "dimensione_buffer", 0, "Dimensione del buffer" },
     { 0 }
 };
 
@@ -80,6 +82,8 @@ static struct {
     int timeout;
     int threads;
     int arg_num;
+    bool debug;
+    int dimensione_buffer;
 } arguments;
 
 static std::atomic<bool> abort_due_to_timeout;
@@ -99,6 +103,8 @@ void set_default_arguments() {
     arguments.timeout = 0;
     arguments.threads = std::thread::hardware_concurrency();
     arguments.arg_num = 0;
+    arguments.debug = false;
+    arguments.dimensione_buffer = 1;
 }
 
 static error_t parse_opt (int key, char *arg, struct argp_state *state) {
@@ -148,7 +154,12 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
             break;
         case 'T':
             arguments.threads = std::stoi(arg);
-            break;
+        break;case 'D':
+	    arguments.debug = true;
+	    break;
+	case 'B':
+	    arguments.dimensione_buffer = std::stoi(arg);
+	    break;
         case ARGP_KEY_ARG:
             if (arguments.arg_num == 0) {
                 if (std::string(arg) == "min_max")
@@ -180,8 +191,616 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
 
 static struct argp argp = { options, parse_opt, args_doc, doc };
 
+
+
+
+
 /*******************************************************************************
-                                 MCS functions
+                                 GPU definitions
+*******************************************************************************/
+
+
+#define L   0
+#define R   1
+#define LL  2
+#define RL  3
+#define ADJ 4
+#define P   5
+#define W   6
+#define IRL 7
+
+#define BDS 8
+
+#define START 0
+#define END 1
+
+#define MIN(a, b) (a < b)? a : b
+#define MAX(a, b) (a > b)? a : b
+
+#define N_BLOCKS 368
+//#define N_BLOCKS 184
+#define BLOCK_SIZE 1024
+//#define N_BLOCKS 8
+//#define BLOCK_SIZE 32
+#define MAX_GRAPH_SIZE 64
+#define checkCudaErrors(value) CheckCudaErrorAux(__FILE__,__LINE__, #value, value)
+
+#define CLEAN 100
+uchar time_to_clean = 0;
+
+__constant__ uchar d_adjmat0[MAX_GRAPH_SIZE][MAX_GRAPH_SIZE];
+__constant__ uchar d_adjmat1[MAX_GRAPH_SIZE][MAX_GRAPH_SIZE];
+__constant__ uchar d_n0;
+__constant__ uchar d_n1;
+
+uchar adjmat0[MAX_GRAPH_SIZE][MAX_GRAPH_SIZE];
+uchar adjmat1[MAX_GRAPH_SIZE][MAX_GRAPH_SIZE];
+uchar n0;
+uchar n1;
+
+const uint __gpu_level = 5;
+struct timespec start;
+double ttcd = 0, ttsg = 0;
+Graph *g0, *g1;
+
+std::thread::id main_th_id;
+
+/*******************************************************************************
+                                 GPU functions
+*******************************************************************************/
+
+
+
+__host__ __device__
+void uchar_swap(uchar *a, uchar *b){
+	uchar tmp = *a;
+	*a = *b;
+	*b = tmp;
+}
+
+__host__ __device__
+uchar select_next_v(uchar *left, uchar *bd){
+	uchar min = UCHAR_MAX, idx = UCHAR_MAX;
+	if(bd[RL] != bd[IRL])
+		return left[bd[L] + bd[LL]];
+	for (uchar i = 0; i < bd[LL]; i++)
+		if (left[bd[L] + i] < min) {
+			min = left[bd[L] + i];
+			idx = i;
+		}
+	uchar_swap(&left[bd[L] + idx], &left[bd[L] + bd[LL] - 1]);
+	bd[LL]--;
+	bd[RL]--;
+	return min;
+}
+
+
+__host__ __device__
+uchar select_next_w(uchar *right, uchar *bd) {
+	uchar min = UCHAR_MAX, idx = UCHAR_MAX;
+	for (uchar i = 0; i < bd[RL]+1; i++)
+		if ((right[bd[R] + i] > bd[W] || bd[W] == UCHAR_MAX)
+				&& right[bd[R] + i] < min) {
+			min = right[bd[R] + i];
+			idx = i;
+		}
+	if(idx == UCHAR_MAX)
+		bd[RL]++;
+	return idx;
+}
+
+
+__host__  __device__ uchar index_of_next_smallest(const uchar *arr,
+		uchar start_idx, uchar len, uchar w) {
+	uchar idx = UCHAR_MAX;
+	uchar smallest = UCHAR_MAX;
+	for (uchar i = 0; i < len; i++) {
+		if ((arr[start_idx + i] > w || w == UCHAR_MAX)
+				&& arr[start_idx + i] < smallest) {
+			smallest = arr[start_idx + i];
+			idx = i;
+		}
+	}
+	return idx;
+}
+
+__host__  __device__ uchar find_min_value(const uchar *arr, uchar start_idx,
+		uchar len) {
+	uchar min_v = UCHAR_MAX;
+	for (int i = 0; i < len; i++) {
+		if (arr[start_idx + i] < min_v)
+			min_v = arr[start_idx + i];
+	}
+	return min_v;
+}
+
+__host__ __device__
+void remove_from_domain(uchar *arr, const uchar *start_idx, uchar *len,
+		uchar v) {
+	int i = 0;
+	for (i = 0; arr[*start_idx + i] != v; i++)
+		;
+	uchar_swap(&arr[*start_idx + i], &arr[*start_idx + *len - 1]);
+	(*len)--;
+}
+
+__host__ __device__
+void update_incumbent(uchar cur[][2], uchar inc[][2], uchar cur_pos,
+		uchar *inc_pos) {
+	if (cur_pos > *inc_pos) {
+		*inc_pos = cur_pos;
+		for (int i = 0; i < cur_pos; i++) {
+			inc[i][L] = cur[i][L];
+			inc[i][R] = cur[i][R];
+		}
+	}
+}
+
+// BIDOMAINS FUNCTIONS /////////////////////////////////////////////////////////////////////////////////////////////////
+__host__ __device__
+void add_bidomain(uchar domains[][BDS], uint *bd_pos, uchar left_i,
+		uchar right_i, uchar left_len, uchar right_len, uchar is_adjacent,
+		uchar cur_pos) {
+	domains[*bd_pos][L] 	= left_i;
+	domains[*bd_pos][R] 	= right_i;
+	domains[*bd_pos][LL] 	= left_len;
+	domains[*bd_pos][RL] 	= right_len;
+	domains[*bd_pos][ADJ] 	= is_adjacent;
+	domains[*bd_pos][P] 	= cur_pos;
+	domains[*bd_pos][W] 	= UCHAR_MAX;
+	domains[*bd_pos][IRL] 	= right_len;
+
+	(*bd_pos)++;
+}
+
+__host__  __device__ uint calc_bound(uchar domains[][BDS], uint bd_pos,
+		uint cur_pos, uint *bd_n) {
+	uint bound = 0;
+	int i;
+	for (i = bd_pos - 1; i >= 0 && domains[i][P] == cur_pos; i--)
+		bound += MIN(domains[i][LL], domains[i][IRL]);
+	*bd_n = bd_pos - 1 - i;
+	return bound;
+}
+
+__host__  __device__ uchar partition(uchar *arr, uchar start, uchar len,
+		const uchar *adjrow) {
+	uchar i = 0;
+	for (uchar j = 0; j < len; j++) {
+		if (adjrow[arr[start + j]]) {
+			uchar_swap(&arr[start + i], &arr[start + j]);
+			i++;
+		}
+	}
+	return i;
+}
+
+__host__  __device__
+uchar find_min_value(uchar *arr, uchar start_idx, uchar len){
+	uchar min_v = UCHAR_MAX;
+	for(int i = 0; i < len; i++){
+		if(arr[start_idx+i] < min_v)
+			min_v = arr[start_idx + i];
+	}
+	return min_v;
+}
+
+__host__  __device__
+void select_bidomain(uchar domains[][BDS], uint bd_pos,  uchar *left, int current_matching_size, bool connected){
+	int i;
+	uint min_size = UINT_MAX;
+	uint min_tie_breaker = UINT_MAX;
+	uint best = UINT_MAX;
+	uchar *bd;
+	for (i = bd_pos - 1, bd = &domains[i][L]; i >= 0 && bd[P] == current_matching_size; i--, bd = &domains[i][L]) {
+		if (connected && current_matching_size>0 && !bd[ADJ]) continue;
+		int len = bd[LL] > bd[RL] ? bd[LL] : bd[RL];
+		if (len < min_size) {
+			min_size = len;
+			min_tie_breaker = find_min_value(left, bd[L], bd[LL]);
+			best = i;
+		} else if (len == min_size) {
+			int tie_breaker = find_min_value(left, bd[L], bd[LL]);
+			if (tie_breaker < min_tie_breaker) {
+				min_tie_breaker = tie_breaker;
+				best = i;
+			}
+		}
+	}
+	if(best != UINT_MAX && best != bd_pos-1){
+		uchar tmp[BDS];
+		for(i = 0; i < BDS; i++) tmp[i] = domains[best][i];
+		for(i = 0; i < BDS; i++) domains[best][i] = domains[bd_pos-1][i];
+		for(i = 0; i < BDS; i++) domains[bd_pos-1][i] = tmp[i];
+
+	}
+}
+
+
+
+__device__
+void d_generate_next_domains(uchar domains[][BDS], uint *bd_pos, uint cur_pos, uchar *left, uchar *right, uchar v, uchar w, uint inc_pos) {
+	int i;
+	uint bd_backup = *bd_pos;
+	uint bound = 0;
+	uchar *bd;
+	for (i = *bd_pos - 1, bd = &domains[i][L]; i >= 0 && bd[P] == cur_pos - 1; i--, bd = &domains[i][L]) {
+
+		uchar l_len = partition(left, bd[L], bd[LL], d_adjmat0[v]);
+		uchar r_len = partition(right, bd[R], bd[RL], d_adjmat1[w]);
+
+		if (bd[LL] - l_len && bd[RL] - r_len) {
+			add_bidomain(domains, bd_pos, bd[L] + l_len, bd[R] + r_len, bd[LL] - l_len, bd[RL] - r_len, bd[ADJ], (uchar) (cur_pos));
+			bound += MIN(bd[LL] - l_len, bd[RL] - r_len);
+		}
+		if (l_len && r_len) {
+			add_bidomain(domains, bd_pos, bd[L], bd[R], l_len, r_len, true, (uchar) (cur_pos));
+			bound += MIN(l_len, r_len);
+		}
+	}
+	if (cur_pos + bound <= inc_pos)
+		*bd_pos = bd_backup;
+}
+
+__global__
+void d_mcs(uchar *args, int n_threads, uchar a_size, uint *args_i, uint actual_inc, uchar *device_solutions, uint max_sol_size, uint last_arg, bool verbose, bool connected, uint *glo_sh_inc) {
+	uint my_idx = (blockIdx.x * blockDim.x) + threadIdx.x;
+	uchar cur[MAX_GRAPH_SIZE][2], incumbent[MAX_GRAPH_SIZE][2],
+	domains[MAX_GRAPH_SIZE * MAX_GRAPH_SIZE / 2][BDS], left[MAX_GRAPH_SIZE],
+	right[MAX_GRAPH_SIZE], v, w;
+	uint bd_pos = 0, bd_n = 0;
+	uchar inc_pos = 0;
+	__shared__ uint sh_inc;
+	sh_inc = actual_inc;
+	uint loc_sh_inc = actual_inc;
+	
+	//uchar last_inc = 0;
+	
+	__syncthreads();
+	if (my_idx < n_threads) {
+		for (int i = args_i[my_idx]; ( my_idx < n_threads-1 &&  i < args_i[my_idx +1] ) || ( my_idx == n_threads-1 && i < last_arg );) {
+			add_bidomain(domains, &bd_pos, args[i++], args[i++], args[i++], args[i++], args[i++], args[i++]);
+			for (int p = 0; p < domains[bd_pos - 1][P]; p++) {
+				cur[p][L] = args[i++];
+			}
+			for (int p = 0; p < domains[bd_pos - 1][P]; p++) {
+				cur[p][R] = args[i++];
+			}
+			for (int l = 0; l < d_n0; l++) {
+				left[l] = args[i++];
+			}
+			for (int r = 0; r < d_n1; r++) {
+				right[r] = args[i++];
+			}
+		}
+		while (bd_pos > 0) {
+			uchar *bd = &domains[bd_pos - 1][L];
+			if (calc_bound(domains, bd_pos, bd[P], &bd_n) + bd[P] + (bd[RL] != bd[IRL]) <= loc_sh_inc || (bd[LL] == 0 && bd[RL] == bd[IRL])) {
+				bd_pos--;
+			} else {
+				select_bidomain(domains, bd_pos, left, domains[bd_pos - 1][P], connected);
+				if (bd[RL] == bd[IRL]) {
+					v = find_min_value(left, bd[L], bd[LL]);
+					remove_from_domain(left, &bd[L], &bd[LL], v);
+					bd[RL]--;
+				} else {
+					v = left[bd[L] + bd[LL]];
+				}
+				if ((bd[W] = index_of_next_smallest(right, bd[R], bd[RL] + (uchar) 1, bd[W])) == UCHAR_MAX) {
+					bd[RL]++;
+				} else {
+					w = right[bd[R] + bd[W]];
+					right[bd[R] + bd[W]] = right[bd[R] + bd[RL]];
+					right[bd[R] + bd[RL]] = w;
+					bd[W] = w;
+					cur[bd[P]][L] = v;
+					cur[bd[P]][R] = w;
+					update_incumbent(cur, incumbent, bd[P] + 1, &inc_pos);
+					loc_sh_inc = MAX(atomicMax(&sh_inc, inc_pos), loc_sh_inc);
+					loc_sh_inc = MAX(atomicMax(glo_sh_inc, loc_sh_inc), loc_sh_inc);
+					d_generate_next_domains(domains, &bd_pos, bd[P] + 1, left, right, v, w, inc_pos);
+				}
+			}
+		}
+	}
+	device_solutions[blockIdx.x* max_sol_size] = 0;
+
+	__syncthreads();
+	if (atomicCAS(&sh_inc, inc_pos, 0) == inc_pos && inc_pos > 0) {
+		if(verbose) printf("Th_%d found new solution of size %d\n", my_idx, inc_pos);
+		bd_pos = 0;
+		device_solutions[blockIdx.x* max_sol_size + bd_pos++] = inc_pos;
+		for (int i = 0; i < inc_pos; i++)
+			device_solutions[blockIdx.x* max_sol_size + bd_pos++] = incumbent[i][L];
+		for (int i = 0; i < inc_pos; i++)
+			device_solutions[blockIdx.x* max_sol_size + bd_pos++] = incumbent[i][R];
+	}
+}
+
+double compute_elapsed_sec(struct timespec strt){
+	struct timespec now;
+	double time_elapsed;
+
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	time_elapsed = (now.tv_sec - strt.tv_sec);
+	time_elapsed += (double)(now.tv_nsec - strt.tv_nsec) / 1000000000.0;
+
+	return time_elapsed;
+}
+
+static void CheckCudaErrorAux(const char *file, unsigned line,
+		const char *statement, cudaError_t err) {
+	if (err == cudaSuccess)
+		return;
+	fprintf(stderr, "%s returned %s(%d) at %s:%d\n", statement,
+			cudaGetErrorString(err), err, file, line);
+	exit(1);
+}
+
+void move_graphs_to_gpu(Graph *graph0, Graph *graph1) {
+	n0 = graph0->n;
+	n1 = graph1->n;
+	g0 = graph0;
+	g1 = graph1;
+	checkCudaErrors(cudaMemcpyToSymbol(d_n0, &graph0->n, sizeof(uchar)));
+	checkCudaErrors(cudaMemcpyToSymbol(d_n1, &graph1->n, sizeof(uchar)));
+	checkCudaErrors(cudaMemcpyToSymbol(d_adjmat0, adjmat0, MAX_GRAPH_SIZE*MAX_GRAPH_SIZE));
+	checkCudaErrors(cudaMemcpyToSymbol(d_adjmat1, adjmat1, MAX_GRAPH_SIZE*MAX_GRAPH_SIZE));
+}
+
+
+void h_generate_next_domains(uchar domains[][BDS], uint *bd_pos, uint cur_pos,
+		uchar *left, uchar *right, uchar v, uchar w, uint inc_pos) {
+	int i;
+	uint bd_backup = *bd_pos;
+	uint bound = 0;
+	uchar *bd;
+	for (i = *bd_pos - 1, bd = &domains[i][L]; i >= 0 && bd[P] == cur_pos - 1;
+			i--, bd = &domains[i][L]) {
+
+		uchar l_len = partition(left, bd[L], bd[LL], adjmat0[v]);
+		uchar r_len = partition(right, bd[R], bd[RL], adjmat1[w]);
+
+		if (bd[LL] - l_len && bd[RL] - r_len) {
+			add_bidomain(domains, bd_pos, bd[L] + l_len, bd[R] + r_len,
+					bd[LL] - l_len, bd[RL] - r_len, bd[ADJ], (uchar) (cur_pos));
+			bound += MIN(bd[LL] - l_len, bd[RL] - r_len);
+		}
+		if (l_len && r_len) {
+			add_bidomain(domains, bd_pos, bd[L], bd[R], l_len, r_len, true,
+					(uchar) (cur_pos));
+			bound += MIN(l_len, r_len);
+		}
+	}
+	if (cur_pos + bound <= inc_pos)
+		*bd_pos = bd_backup;
+}
+
+
+bool check_sol(Graph *g0, Graph *g1, uchar sol[][2], uint sol_len) {
+	bool *used_left = (bool*) calloc(g0->n, sizeof *used_left);
+	bool *used_right = (bool*) calloc(g1->n, sizeof *used_right);
+	for (int i = 0; i < sol_len; i++) {
+		if (used_left[sol[i][L]]) {
+			printf("node %d of g0 used twice\n", used_left[sol[i][L]]);
+			return false;
+		}
+		if (used_right[sol[i][R]]) {
+			printf("node %d of g1 used twice\n", used_right[sol[i][L]]);
+			return false;
+		}
+		used_left[sol[i][L]] = true;
+		used_right[sol[i][R]] = true;
+		if (g0->label[sol[i][L]] != g1->label[sol[i][R]]) {
+			printf("g0:%d and g1:%d have different labels\n", sol[i][L],
+					sol[i][R]);
+			return false;
+		}
+		for (int j = i + 1; j < sol_len; j++) {
+			if (g0->adjmat[sol[i][L]][sol[j][L]]
+			                          != g1->adjmat[sol[i][R]][sol[j][R]]) {
+				printf("g0(%d-%d) is different than g1(%d-%d)\n", sol[i][L],
+						sol[j][L], sol[i][R], sol[j][R]);
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
+void launch_kernel(uchar *args, int n_threads, uchar a_size, uint sol_size, uint *args_i,
+		uchar incumbent[][2], uchar *inc_pos, uint total_args_size, uint last_arg) {
+		
+	//cout << "Lancio kernel" << endl;
+	uchar *device_args;
+	uchar *device_solutions;
+	uchar *host_solutions;
+	uint *device_args_i;
+	uint max_sol_size = 1 + 2 * (MIN(n0, n1));
+	struct timespec sleep;
+	sleep.tv_sec = 0;
+	sleep.tv_nsec = 2000;
+	cudaEvent_t stop;
+	
+	uint *glo_sh_inc;
+
+	host_solutions = (uchar*) malloc(N_BLOCKS * max_sol_size * sizeof *host_solutions);
+
+	checkCudaErrors(cudaEventCreate(&stop));
+	
+	checkCudaErrors(cudaMalloc(&glo_sh_inc, sizeof *glo_sh_inc));
+	checkCudaErrors(cudaMemset(glo_sh_inc, 0, sizeof *glo_sh_inc));
+
+	checkCudaErrors(cudaMalloc(&device_args, total_args_size * sizeof *device_args));
+	checkCudaErrors(cudaMalloc(&device_solutions, N_BLOCKS * max_sol_size * sizeof *device_solutions));
+
+
+	checkCudaErrors(cudaMemcpy(device_args, args, total_args_size * sizeof *device_args, cudaMemcpyHostToDevice));
+
+	checkCudaErrors(cudaMalloc(&device_args_i, N_BLOCKS * BLOCK_SIZE * sizeof *device_args_i));
+	checkCudaErrors(cudaMemcpy(device_args_i, args_i, N_BLOCKS * BLOCK_SIZE * sizeof *device_args_i, cudaMemcpyHostToDevice));
+
+	if(arguments.verbose) printf("Launching kernel... %d threads\n", n_threads);
+
+	d_mcs<<<N_BLOCKS, BLOCK_SIZE>>>(device_args, n_threads, a_size, device_args_i, *inc_pos, device_solutions, max_sol_size, last_arg, arguments.verbose, arguments.connected, glo_sh_inc);
+	checkCudaErrors(cudaEventRecord(stop));
+
+	while(cudaEventQuery(stop) == cudaErrorNotReady){
+		nanosleep(&sleep, NULL);
+		if(arguments.timeout && compute_elapsed_sec(start) > arguments.timeout)
+			return;
+	}
+
+	if(arguments.verbose) printf("Kernel executed...\n");
+
+	checkCudaErrors(cudaMemcpy(host_solutions, device_solutions, N_BLOCKS * max_sol_size * sizeof *device_solutions, cudaMemcpyDeviceToHost));
+
+	checkCudaErrors(cudaFree(device_args));
+	checkCudaErrors(cudaFree(device_args_i));
+	checkCudaErrors(cudaFree(glo_sh_inc));
+
+	//cout << "Uscito dal kernel" << endl;
+	for(int b = 0; b < N_BLOCKS; b++){
+		if (*inc_pos < host_solutions[b*max_sol_size]) {
+			*inc_pos = host_solutions[b*max_sol_size];
+			for (int i = 1; i < *inc_pos + 1; i++) {
+				incumbent[i - 1][L] = host_solutions[b*max_sol_size + i];
+				incumbent[i - 1][R] = host_solutions[b*max_sol_size + *inc_pos + i];
+				if(arguments.verbose) printf("|%d %d| ", incumbent[i-1][L], incumbent[i-1][R]);
+			}if(arguments.verbose) printf("\n");
+		}
+	}
+	//cout << "stampati risultati" << endl;
+	free(host_solutions);
+	checkCudaErrors(cudaFree(device_solutions));
+	//cout << "ritorno alla raccolta dati" << endl;
+}
+
+struct Dati {
+	uchar domains[BDS - 2];
+	uchar cur[__gpu_level][2];
+	uchar left[MAX_GRAPH_SIZE];
+	uchar right[MAX_GRAPH_SIZE];
+	
+	Dati() {}
+	Dati(uchar domains[][BDS], uchar cur[][2], uchar left[], uchar right[], /*uint bound_size,*/ uint bd_pos) {
+		uint i;
+		for (i = 0; i < BDS - 2; i++) {
+			this->domains[i] = domains[bd_pos - 1][i];
+		}
+		for (i = 0; i < __gpu_level; i++) {
+			this->cur[i][L] = cur[i][L];
+			this->cur[i][R] = cur[i][R];
+		}
+		for (i = 0; i < n0; i++) {
+			this->left[i] = left[i];
+		}
+		for (i = 0; i < n1; i++) {
+			this->right[i] = right[i];
+		}
+	}
+};
+struct wrapperDati  {
+	uint i;
+	uint number_of_bidomains;
+	uint bound_size;
+};
+
+vector<Dati> argomenti_globali;
+vector<wrapperDati> argomenti_i_globali;
+vector<vector<uchar>> soluzione_globale;
+
+void *safe_realloc(void* old, uint new_size){
+	void *tmp = realloc(old, new_size);
+	if (tmp != NULL) return tmp;
+	else exit(-1);
+}
+
+bool comparaDati(wrapperDati d1, wrapperDati d2)
+{
+	return (d1.bound_size <= d2.bound_size);
+}
+
+void pulisci_argomenti_v2(vector<Dati>& argomenti, vector<wrapperDati>& argomenti_i, uchar inc_pos, uint& n_args, int& n_threads) {
+	if(arguments.debug)
+		cout << "Inizio pulizia ... " << n_threads << " thread già eseguiti, " << +inc_pos << " dimensione trovata" << endl;
+		
+	n_threads -= min(N_BLOCKS * BLOCK_SIZE, n_threads);
+	if (n_threads == 0) {
+		n_args = 0;
+		argomenti.resize(0);
+		argomenti_i.resize(n_threads);
+		return;
+	}
+	uint bound_inferiore = 0;
+	uint bound_superiore = n_threads-1;
+	uint i;
+	uint pos_inserimento_args_i = 0;
+	
+	cout << "dichiarazioni" << endl;
+	
+	vector<Dati> args(0);
+	args.reserve(argomenti.size());
+	
+	cout << "dichiarazione args" << endl;
+	
+	cout << "bound inferiore: " << bound_inferiore << endl;
+	cout << "bound superiore: " << bound_superiore << endl << endl;
+	
+	while (bound_inferiore != bound_superiore) {
+		i = (bound_inferiore + bound_superiore) / 2;
+		if (argomenti_i[i].bound_size <= inc_pos) {
+			bound_inferiore = i + 1;
+			cout << "bound inferiore: " << bound_inferiore << endl;
+			cout << "bound superiore: " << bound_superiore << endl << endl;
+		}
+		else {
+			bound_superiore = i;
+			cout << "bound inferiore: " << bound_inferiore << endl;
+			cout << "bound superiore: " << bound_superiore << endl << endl;
+		}
+	}
+	cout << "Siamo usciti dal while!" << endl;
+	
+	cout << argomenti_i[bound_inferiore].bound_size << " > " << argomenti_i[bound_inferiore - 1].bound_size << endl;
+	
+	n_threads -= bound_inferiore;
+	
+	if (n_threads == 1 && argomenti_i[bound_inferiore].bound_size <= inc_pos) {
+		n_threads = 0;
+		n_args = 0;
+		argomenti.resize(0);
+		argomenti_i.resize(n_threads);
+		return;
+	}
+	if ((bound_inferiore == 0) && ((time_to_clean++) != CLEAN)) {
+		argomenti_i.resize(n_threads);
+		return;
+	}
+	time_to_clean = 0;
+	
+	for (i = 0; i < n_threads; i++) {
+		argomenti_i[pos_inserimento_args_i] = argomenti_i[bound_inferiore + i];
+		uint pos_args = args.size();
+		for (int j = 0; j < argomenti_i[bound_inferiore + i].number_of_bidomains; j++) {
+			args.push_back(argomenti[argomenti_i[bound_inferiore + i].i + j]);
+		}
+		argomenti_i[pos_inserimento_args_i++].i = pos_args;
+	}
+	
+	argomenti = args;
+	n_args = args.size();
+	if(arguments.debug)
+		cout << "Fine pulizia" << endl;
+	
+	argomenti_i.resize(n_threads);
+		
+	
+}
+
+
+/*******************************************************************************
+                                 MCS definitions
 *******************************************************************************/
 
 struct VtxPair {
@@ -378,6 +997,194 @@ struct HelpMe
 };
 std::atomic<int> indice_help_me(0);
 
+
+
+
+
+/*******************************************************************************
+                                 Merging functions
+*******************************************************************************/
+
+void prepara_argomenti_globali (AtomicIncumbent & global_incumbent, vector<VtxPair> & sol_corrente) { //////////////////////////////////////////////// NUOVE FUNZIONI MCSPLIT-MOSCA ////////////////////////////////////////////////////////////////////////
+
+	//cout << "prepara argomenti globali" << endl;
+	//cout << "\tsol size" << endl;
+	uint sol_size = 1 + 2*(MIN(n0, n1));
+	//cout << "\targs_num" << endl;
+	uint args_num = N_BLOCKS * BLOCK_SIZE * 2 * arguments.dimensione_buffer;
+	//cout << "\ta_size" << endl;
+	uint a_size = (BDS - 2 + 2 * __gpu_level + n0 + n1);
+	//cout << "\tn_threads" << endl;
+	int n_threads = argomenti_i_globali.size(); //probabilmente questo valore potrebbe essere rimosso
+	uint n_args = argomenti_globali.size(); //probabilmente questo valore potrebbe essere rimosso
+	//cout << "\targ_i" << endl;
+	uint arg_i = 0, i = 0;
+	//cout << "\tmin_size" << endl;
+	int min_size = MIN(g0->n, g1->n);
+	
+
+	//cout << "\targs_i" << endl;
+	uint args_i[N_BLOCKS * BLOCK_SIZE];
+	
+	//cout << "\targs_size" << endl;
+	uint args_size = args_num * a_size;
+	//cout << "\targs malloc" << endl;
+	uchar *args = (uchar*) malloc(args_size * sizeof *args);
+	
+	//cout << "\tstable sort" << endl;
+	//cout << "\t\tn_threads = " << n_threads << endl;
+	stable_sort(argomenti_i_globali.begin(), argomenti_i_globali.begin() + n_threads, comparaDati);
+	
+	//cout << "\tcalcolo size" << endl;
+	
+	uint dim_kernel = 0;
+	for (uint b = 0; b < n_threads /*N_BLOCKS * BLOCK_SIZE*/; b++)  {
+		dim_kernel += argomenti_i_globali[n_threads-b-1].number_of_bidomains;
+	}
+	dim_kernel = dim_kernel * a_size;
+	//cout << "\tresize" << endl;
+	if (dim_kernel > args_size) {
+		args = (uchar*) safe_realloc(args, dim_kernel * sizeof *args);
+	}
+	args_size = dim_kernel;
+			
+	//cout << "\tcopia argomenti" << endl;			
+		
+	for (uint b = 0; b < n_threads/*N_BLOCKS * BLOCK_SIZE*/; b++) {
+		args_i[b] = arg_i;
+		for(uint c = 0; c < argomenti_i_globali[n_threads-b-1].number_of_bidomains; c++) {
+			for (i = 0; i < BDS - 2; i++, arg_i++)
+				args[arg_i] = argomenti_globali[argomenti_i_globali[n_threads-b-1].i + c].domains[i];
+			for (i = 0; i < __gpu_level; i++, arg_i++)
+				args[arg_i] = argomenti_globali[argomenti_i_globali[n_threads-b-1].i + c].cur[i][L];
+			for (i = 0; i < __gpu_level; i++, arg_i++)
+				args[arg_i] = argomenti_globali[argomenti_i_globali[n_threads-b-1].i + c].cur[i][R];
+			for (i = 0; i < n0; i++, arg_i++)
+				args[arg_i] = argomenti_globali[argomenti_i_globali[n_threads-b-1].i + c].left[i];
+			for (i = 0; i < n1; i++, arg_i++) //non dovrebbe essere n1???
+				args[arg_i] = argomenti_globali[argomenti_i_globali[n_threads-b-1].i + c].right[i];
+		}
+	}
+	//cout << "\tlancio kernel" << endl;
+	if(arguments.debug)
+		cout << "lancio kernel:" << endl << 
+		"\tthreads:             " << n_threads << endl <<
+		"\targomenti:           " << n_args << endl <<
+		"\tthreads kernel:      " << N_BLOCKS * BLOCK_SIZE << endl <<
+		"\targomenti kernel:    " << arg_i/a_size << endl <<
+		"\targs_size:           " << args_size << endl <<
+		"\tmigliore bound:      " << argomenti_i_globali[n_threads-1].bound_size << endl <<
+		"\tpeggiore bound:      " << argomenti_i_globali[MAX(n_threads-1-N_BLOCKS*BLOCK_SIZE, 0)].bound_size<<endl<<
+		"\tultimo   bound:      " << argomenti_i_globali[0].bound_size << endl;
+	
+	
+	//clock_gettime(CLOCK_MONOTONIC, &fine);
+	//time_elapsed = (fine.tv_sec - inizio.tv_sec); // calculating elapsed seconds
+	//time_elapsed += (double) (fine.tv_nsec - inizio.tv_nsec) / 1000000000.0; // adding elapsed nanoseconds
+	//if(arguments.verbose)
+	//	printf("tempo cattura dati >>> %015.10f\n", time_elapsed);
+	
+	//ttcd += time_elapsed;
+	
+	//clock_gettime(CLOCK_MONOTONIC, &inizio);
+	
+	uchar inc_pos = global_incumbent.value;
+	
+	
+	//cout << "migliore soluzione attuale = " << +inc_pos << endl;
+	uchar soluzione_locale[min_size][2];
+	
+	launch_kernel(args, n_threads, a_size, sol_size, args_i, soluzione_locale, &inc_pos, args_size, arg_i/**a_size*/);
+	
+	if(global_incumbent.update(inc_pos)) {
+		sol_corrente.clear();
+		for(int i=0; i<inc_pos; i++) {
+			VtxPair coppia ((int)soluzione_locale[i][L], (int)soluzione_locale[i][R]);
+			//coppia.v = (int)soluzione_locale[i][L];
+			//coppia.w = (int)soluzione_locale[i][R];
+			sol_corrente.push_back(coppia);
+			//soluzione_globale[i][L] = soluzione_locale[i][L];
+			//soluzione_globale[i][R] = soluzione_locale[i][R];
+		}
+	}
+	
+	//clock_gettime(CLOCK_MONOTONIC, &fine);
+	//time_elapsed = (fine.tv_sec - inizio.tv_sec); // calculating elapsed seconds
+	//time_elapsed += (double) (fine.tv_nsec - inizio.tv_nsec) / 1000000000.0; // adding elapsed nanoseconds
+	//if(arguments.verbose)
+	//	printf("tempo soluzione    >>> %015.10f\n", time_elapsed);
+	
+	//ttsg += time_elapsed;
+	
+	//clock_gettime(CLOCK_MONOTONIC, &inizio);
+	
+	if(arguments.debug)
+		cout << "Soluzione migliore: " << +(uchar)inc_pos << endl;
+	
+	pulisci_argomenti_v2(argomenti_globali, argomenti_i_globali, inc_pos, n_args, n_threads);
+	
+	if(arguments.debug)
+		cout << "\tthreads:             " << n_threads << endl <<
+		"\tdim args_i:          " << argomenti_i_globali.size() << endl <<
+		"\targomenti:           " << n_args << endl <<
+		"\tdim args:            " << argomenti_globali.size() << endl;
+}
+
+void compila_argomenti_globali (vector<Bidomain> & domini, uint bound_size, vector<VtxPair> & sol_corrente, vector<uchar> & left, vector<uchar> & right, AtomicIncumbent & global_incumbent, vector<VtxPair> & my_incumbent) { /////////////////////////////////////// NUOVA FUNZIONE ///////////////////////////////////////////
+	//cout << "compila argomenti globali" << endl;
+	Dati nuovo_arg;
+	wrapperDati pos_nuovo_arg;
+	//cout << "\tdichiarazioni" << endl;
+	pos_nuovo_arg.i = argomenti_globali.size();
+	pos_nuovo_arg.number_of_bidomains = domini.size();
+	pos_nuovo_arg.bound_size = bound_size;
+	argomenti_i_globali.push_back(pos_nuovo_arg);
+	//cout << "\targomenti i compilato" << endl;
+	for (int i=0; i<domini.size(); i++) {
+		nuovo_arg.domains[L] = domini[i].l;
+		nuovo_arg.domains[R] = domini[i].r;
+		nuovo_arg.domains[LL] = domini[i].left_len;
+		nuovo_arg.domains[RL] = domini[i].right_len;
+		nuovo_arg.domains[ADJ] = domini[i].is_adjacent;
+		nuovo_arg.domains[P] = split_levels+1;
+		for (int j=0; j<__gpu_level; j++) {
+			nuovo_arg.cur[j][L] = sol_corrente[j].v;
+			nuovo_arg.cur[j][R] = sol_corrente[j].w;
+		}
+		for (int j=0; j<n0; j++) {
+			nuovo_arg.left[j] = left[j];
+		}
+		for (int j=0; j<n1; j++) {
+			nuovo_arg.right[j] = right[j];
+		}
+		argomenti_globali.push_back(nuovo_arg);
+		//cout << "\targomenti compilato" << endl;
+	}
+	//cout << "\t" << argomenti_i_globali.size() << endl;
+	if(argomenti_i_globali.size() == N_BLOCKS * BLOCK_SIZE * arguments.dimensione_buffer){
+		//dobbiamo fare una pulizia e buttare tutti i risultati che sono sotto il bound
+		//perché nel frattempo la CPU ha migliorato la soluzione migliore
+		//se argomenti_i_globali.size() non è più sufficientemente grande -> torniamo a raccogliere dati
+		prepara_argomenti_globali(global_incumbent, my_incumbent);
+		
+		/*if (my_incumbent.size() < sol_corrente.size()) {
+		    my_incumbent = sol_corrente;
+		    //global_incumbent.update(sol_corrente.size());
+		}*/
+	}
+	
+}
+
+
+
+
+
+/*******************************************************************************
+                                 MCS functions
+*******************************************************************************/
+
+
+
 bool check_sol(const Graph & g0, const Graph & g1 , const vector<VtxPair> & solution) {
     return true;
     vector<bool> used_left(g0.n, false);
@@ -535,6 +1342,214 @@ void remove_bidomain(vector<Bidomain>& domains, int idx) {
     domains.pop_back();
 }
 
+//////////////////////////////// GPU /////////////////////////////////////////
+
+
+
+
+void GPU_solve(const unsigned depth, const Graph & g0, const Graph & g1,
+                AtomicIncumbent & global_incumbent,
+                PerThreadIncumbents & per_thread_incumbents,
+                vector<VtxPair> & current, vector<Bidomain> & domains,
+                vector<int> & left, vector<int> & right, const unsigned int matching_size_goal,
+                const Position & position, unsigned long long & my_thread_nodes){
+
+    if (abort_due_to_timeout)
+        return;
+    my_thread_nodes++;
+    if (per_thread_incumbents.find(std::this_thread::get_id())->second.size() < current.size()) {
+        per_thread_incumbents.find(std::this_thread::get_id())->second = current;
+        global_incumbent.update(current.size());
+    }
+
+    unsigned int bound = current.size() + calc_bound(domains);
+    if (bound <= global_incumbent.value || bound < matching_size_goal)
+        return;
+    if (arguments.big_first && global_incumbent.value == matching_size_goal)
+        return;
+
+    int bd_idx = select_bidomain(domains, left, current.size());
+    if (bd_idx == -1)   // In the MCCS case, there may be nothing we can branch on
+        return;
+    Bidomain &bd = domains[bd_idx];
+
+    bd.right_len--;
+    //std::atomic<int> shared_i{ 0 };
+    const int i_end = bd.right_len + 2; /* including the null */
+
+    
+    // Grab this first, before advertising that we can get help
+    //int which_i_should_i_run_next = shared_i++;
+
+    
+///////////////////////////main function////////////////////
+    int v = find_min_value(left, bd.l, bd.left_len);
+        remove_vtx_from_left_domain(left, domains[bd_idx], v);
+        int w = -1;
+        //std::cout << "main funtion - " << std::this_thread::get_id() << std::endl;
+
+        for (int i = 0 ; i < i_end /* not != */ ; i++) {
+            if (i != i_end - 1) {
+                int idx = index_of_next_smallest(right, bd.r, bd.right_len+1, w);
+                w = right[bd.r + idx];
+
+                // swap w to the end of its colour class
+                right[bd.r + idx] = right[bd.r + bd.right_len];
+                right[bd.r + bd.right_len] = w;
+
+                //if (i == which_i_should_i_run_next) {
+                    //which_i_should_i_run_next = shared_i++;
+                    auto new_domains = filter_domains(domains, left, right, g0, g1, v, w,
+                            arguments.directed || arguments.edge_labelled);
+                    current.push_back(VtxPair(v, w));
+		    int bound = current.size() + calc_bound(domains);
+	            if(bound > global_incumbent.value) {
+		           if (current.size() > split_levels) {
+	                    	/*if(main_th_id == std::this_thread::get_id() && current.size() > split_levels) {*/
+	                    	    vector<uchar> char_left(left.size()), char_right(right.size());
+	                    	    for(int i = 0; i < left.size(); i++) {
+					char_left[i] = (uchar) left[i];
+				    }
+	                    	    for(int i = 0; i < right.size(); i++) {
+					char_right[i] = (uchar) right[i];
+				    }
+					//cout << "Current.size = " << +current.size() << endl;
+	                    	    compila_argomenti_globali (new_domains, bound, current, char_left, char_right, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second);/*
+	                    	}
+	                    	else {
+	                            solve_nopar(depth + 1, g0, g1, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, current, new_domains, left, right, matching_size_goal, main_thread_nodes);
+	                        }*/
+	                    }
+	                    else {
+	                        auto new_position = position;
+	                        new_position.add(depth, i + 1);
+	                        GPU_solve(depth + 1, g0, g1, global_incumbent, per_thread_incumbents, current, new_domains, left, right, matching_size_goal, new_position, my_thread_nodes/*main_thread_nodes*/);
+	                    }
+		    }
+                    current.pop_back();
+                //}
+            }
+            else {
+                // Last assign is null. Keep it in the loop to simplify parallelism.
+                bd.right_len++;
+                if (bd.left_len == 0)
+                    remove_bidomain(domains, bd_idx);
+
+		int bound = current.size() + calc_bound(domains);
+                if (bound > global_incumbent.value) {
+                //if (i == which_i_should_i_run_next) {
+                    //which_i_should_i_run_next = shared_i++;
+                    if (current.size() > split_levels) {
+                    	/*if(main_th_id == std::this_thread::get_id()) {*/
+                    	    vector<uchar> char_left(left.size()), char_right(right.size());
+                    	    for(int i = 0; i < left.size(); i++) {
+				char_left[i] = (uchar) left[i];
+			    }
+                    	    for(int i = 0; i < right.size(); i++) {
+				char_right[i] = (uchar) right[i];
+			    }
+                    	    compila_argomenti_globali (domains, bound, current, char_left, char_right, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second);/*
+                    	}
+                    	else {
+                            solve_nopar(depth + 1, g0, g1, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, current, domains, left, right, matching_size_goal, main_thread_nodes);
+                        }*/
+                    }
+                    else {
+                        auto new_position = position;
+                        new_position.add(depth, i + 1);
+                        GPU_solve(depth + 1, g0, g1, global_incumbent, per_thread_incumbents, current, domains, left, right, matching_size_goal, new_position, my_thread_nodes /*main_thread_nodes*/);
+                    }
+                //}
+                }
+            }
+        }
+}
+
+
+std::pair<vector<VtxPair>, unsigned long long> GPU_mcs(const Graph & g0, const Graph & g1) {
+    vector<int> left;  // the buffer of vertex indices for the left partitions
+    vector<int> right;  // the buffer of vertex indices for the right partitions
+    //std::cout << "mcs - " << std::this_thread::get_id() << std::endl;
+
+    srand(time(nullptr));
+    auto domains = vector<Bidomain> {};
+
+    std::set<unsigned int> left_labels;
+    std::set<unsigned int> right_labels;
+    for (unsigned int label : g0.label) left_labels.insert(label);
+    for (unsigned int label : g1.label) right_labels.insert(label);
+    std::set<unsigned int> labels;  // labels that appear in both graphs
+    std::set_intersection(std::begin(left_labels),
+                          std::end(left_labels),
+                          std::begin(right_labels),
+                          std::end(right_labels),
+                          std::inserter(labels, std::begin(labels)));
+
+    // Create a bidomain for each label that appears in both graphs
+    for (unsigned int label : labels) {
+        int start_l = left.size();
+        int start_r = right.size();
+
+        for (int i=0; i<g0.n; i++)
+            if (g0.label[i]==label)
+                left.push_back(i);
+        for (int i=0; i<g1.n; i++)
+            if (g1.label[i]==label)
+                right.push_back(i);
+
+        int left_len = left.size() - start_l;
+        int right_len = right.size() - start_r;
+        domains.push_back({start_l, start_r, left_len, right_len, false});
+    }
+
+    AtomicIncumbent global_incumbent;
+    vector<VtxPair> incumbent;
+    unsigned long long global_nodes = 0;
+
+    if (arguments.big_first) {
+        for (int k=0; k<g0.n; k++) {
+            unsigned int goal = g0.n - k;
+            auto left_copy = left;
+            auto right_copy = right;
+            auto domains_copy = domains;
+            vector<VtxPair> current;
+            PerThreadIncumbents per_thread_incumbents;
+            per_thread_incumbents.emplace(std::this_thread::get_id(), vector<VtxPair>());
+            Position position;
+            
+            GPU_solve(0, g0, g1, global_incumbent, per_thread_incumbents, current, domains_copy, left_copy, right_copy, goal, position, global_nodes);
+            for (auto & i : per_thread_incumbents)
+                if (i.second.size() > incumbent.size())
+                    incumbent = i.second;
+            if (global_incumbent.value == goal || abort_due_to_timeout) break;
+            if (!arguments.quiet) cout << "Upper bound: " << goal-1 << std::endl;
+        }
+
+    } else {
+        vector<VtxPair> current;
+        PerThreadIncumbents per_thread_incumbents;
+        per_thread_incumbents.emplace(std::this_thread::get_id(), vector<VtxPair>());
+        Position position;
+        GPU_solve(0, g0, g1, global_incumbent, per_thread_incumbents, current, domains, left, right, 1, position, global_nodes);
+        
+        //cout << "fine MCS inizio ciclo finale" << endl;
+        prepara_argomenti_globali(global_incumbent, incumbent);
+        
+        for (auto & i : per_thread_incumbents)
+            if (i.second.size() > incumbent.size())
+                incumbent = i.second;
+    }
+
+    return { incumbent, global_nodes };
+}
+
+
+
+//////////////////////////////////////////////////////////////////////
+
+
+
+
 void solve_nopar(const unsigned depth, const Graph & g0, const Graph & g1,
         AtomicIncumbent & global_incumbent,
         vector<VtxPair> & my_incumbent,
@@ -565,7 +1580,7 @@ void solve_nopar(const unsigned depth, const Graph & g0, const Graph & g1,
     Bidomain &bd = domains[bd_idx];
 
     bd.right_len--;
-    std::atomic<int> shared_i{ 0 };
+    //std::atomic<int> shared_i{ 0 };
 
     //std::cout << "solve_nopar - " << std::this_thread::get_id() << std::endl;
 
@@ -941,6 +1956,82 @@ void nuova_print (vector<vector<GraphData>> &gd) {
 	}
 }
 
+////////////////////////////// GPU ////////////////////////////////////////
+
+
+
+void GPU_produci_soluzione (vector<GraphData> &grafi, vector<GraphData> &sol, int indice) {
+
+	cout << "." << endl;
+	Graph *g0 = &grafi.at(indice).g;
+	Graph *g1 = &grafi.at(grafi.size()-1-indice).g;
+	vector<int> g0_deg = calculate_degrees(*g0);
+	vector<int> g1_deg = calculate_degrees(*g1);
+	cout << ".." << endl;
+
+	// As implemented here, g1_dense and g0_dense are false for all instances
+	// in the Experimental Evaluation section of the paper.  Thus,
+	// we always sort the vertices in descending order of degree (or total degree,
+	// in the case of directed graphs.  Improvements could be made here: it would
+	// be nice if the program explored exactly the same search tree if both
+	// input graphs were complemented.
+	vector<int> vv0(g0->n);
+	std::iota(std::begin(vv0), std::end(vv0), 0);
+	bool g1_dense = sum(g1_deg) > g1->n*(g1->n-1);
+	std::stable_sort(std::begin(vv0), std::end(vv0), [&](int a, int b) {
+		return g1_dense ? (g0_deg[a]<g0_deg[b]) : (g0_deg[a]>g0_deg[b]);
+	});
+	cout << "..." << endl;
+	vector<int> vv1(g1->n);
+	std::iota(std::begin(vv1), std::end(vv1), 0);
+	bool g0_dense = sum(g0_deg) > g0->n*(g0->n-1);
+	std::stable_sort(std::begin(vv1), std::end(vv1), [&](int a, int b) {
+		return g0_dense ? (g1_deg[a]<g1_deg[b]) : (g1_deg[a]>g1_deg[b]);
+	});
+	cout << "...." << endl;
+
+	struct Graph g0_sorted = induced_subgraph(*g0, vv0);
+	struct Graph g1_sorted = induced_subgraph(*g1, vv1);
+	
+	
+	cout << "....!" << endl;
+	
+	n0 = g0->n;
+	n1 = g1->n;
+	
+	for (int i = 0; i < n0; i++)
+            for (int j = 0; j < n0; j++)
+                adjmat0[i][j] = g0_sorted.adjmat[i][j];
+
+        for (int i = 0; i < n1; i++)
+            for (int j = 0; j < n1; j++)
+                adjmat1[i][j] = g1_sorted.adjmat[i][j];
+    	
+    	cout << "funziona prima" << endl;
+    	
+        checkCudaErrors(cudaDeviceReset());
+    	
+    	cout << "funziona in mezzo" << endl;
+    	
+        move_graphs_to_gpu(&g0_sorted, &g0_sorted);
+	
+	cout << "funziona" << endl;
+	
+	std::pair<vector<VtxPair>, unsigned long long> solution = GPU_mcs(g0_sorted, g1_sorted);
+
+	// Convert to indices from original, unsorted graphs
+	for (auto& vtx_pair : solution.first) {
+		vtx_pair.v = vv0[vtx_pair.v];
+		vtx_pair.w = vv1[vtx_pair.w];
+	}
+	//cout << sol.size() << " - " << indice << endl;
+	sol.at(indice) = write_Graph(&grafi.at(indice), &grafi.at(grafi.size()-1-indice), solution.first);
+	//write_Graph(GraphData* g0, GraphData* g1, vector<VtxPair>& solution)
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
+
 void produci_soluzione (vector<GraphData> &grafi, vector<GraphData> &sol, int indice, HelpMe & help_me) {
 	Graph *g0 = &grafi.at(indice).g;
 	Graph *g1 = &grafi.at(grafi.size()-1-indice).g;
@@ -955,15 +2046,20 @@ void produci_soluzione (vector<GraphData> &grafi, vector<GraphData> &sol, int in
 	// input graphs were complemented.
 	vector<int> vv0(g0->n);
 	std::iota(std::begin(vv0), std::end(vv0), 0);
+	
 	bool g1_dense = sum(g1_deg) > g1->n*(g1->n-1);
+	
 	std::stable_sort(std::begin(vv0), std::end(vv0), [&](int a, int b) {
-	return g1_dense ? (g0_deg[a]<g0_deg[b]) : (g0_deg[a]>g0_deg[b]);
+		return g1_dense ? (g0_deg[a]<g0_deg[b]) : (g0_deg[a]>g0_deg[b]);
 	});
+	
 	vector<int> vv1(g1->n);
 	std::iota(std::begin(vv1), std::end(vv1), 0);
+	
 	bool g0_dense = sum(g0_deg) > g0->n*(g0->n-1);
+	
 	std::stable_sort(std::begin(vv1), std::end(vv1), [&](int a, int b) {
-	return g0_dense ? (g1_deg[a]<g1_deg[b]) : (g1_deg[a]>g1_deg[b]);
+		return g0_dense ? (g1_deg[a]<g1_deg[b]) : (g1_deg[a]>g1_deg[b]);
 	});
 
 	struct Graph g0_sorted = induced_subgraph(*g0, vv0);
@@ -1054,7 +2150,14 @@ int main(int argc, char** argv) {
         gi_data.at(j+1).resize(gi_data.at(j).size()/2 + gi_data.at(j).size()%2);
         
         for (unsigned int i = 0; i < (unsigned int)(gi_data.at(j).size()/2); i++) {
-            t.emplace_back(std::thread([&gi_data, i, j, &help_me] { produci_soluzione(gi_data.at(j), gi_data.at(j+1), i, help_me); } ));
+        	cout << "ciclo " << j << "\tgrafo " << i << endl;
+            if (gi_data.at(j).size()/2 > 1 && i == 0) {
+            	cout << "GPU partita" << endl;
+                t.emplace_back(std::thread([&gi_data, i, j] { GPU_produci_soluzione(gi_data.at(j), gi_data.at(j+1), i); } ));
+            }
+            else {
+                t.emplace_back(std::thread([&gi_data, i, j, &help_me] { produci_soluzione(gi_data.at(j), gi_data.at(j+1), i, help_me); } ));
+            }
         }
         if (gi_data.at(j).size() % 2) {
             gi_data.at(j+1).at(gi_data.at(j).size()/2) = gi_data.at(j).at(gi_data.at(j).size()/2);

@@ -3,6 +3,9 @@
 
 #include <vector>
 
+typedef unsigned char uchar;
+typedef unsigned int uint;
+
 struct Graph {
     int n;
     std::vector<std::vector<unsigned int>> adjmat;
