@@ -1,7 +1,7 @@
 all: mcsp
 
-mcsp: mcsp.c graph.c graph.h
-	gcc -g -O3 -march=native -mcmodel=medium -Wall -std=c11 -o mcsp graph.c mcsp.c
+mcsp: mcsp.cpp graph.cpp graph.h SecureQueue.h
+	g++ -O3 -pthread -march=native -std=c++17 -o mcsp graph.cpp mcsp.cpp
 
 clean:
 	rm -rf mcsp

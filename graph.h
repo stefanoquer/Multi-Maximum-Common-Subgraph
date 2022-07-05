@@ -1,22 +1,41 @@
-#define MAX_N 2080
+#ifndef GRAPH_H
+#define GRAPH_H
+
+#define DEBUG 0
+//#define GRAPH_MAX_DEF 40
+//#define MAX_N_DEF 100
+#define N_THREADS std::thread::hardware_concurrency()
+#define USING_WINDOWS 0
 
 #include <limits.h>
 #include <stdbool.h>
+#include <stdlib.h>
+#include <vector>
+
+
 
 typedef unsigned long long ULL;
 
 struct Graph {
     int n;
-    unsigned char adjmat[MAX_N][MAX_N];
-    unsigned int label[MAX_N];
+    std::vector<std::vector<unsigned char>> adjmat;
+    std::vector<unsigned int> label;
+
+    Graph(int size) {
+        adjmat.resize(size, std::vector<unsigned char>(size, 0));
+
+        label.resize(size, 0);
+        n = size;
+    }
 };
 
 // Precondition: *g is already zeroed out
-void readGraph(char* filename, struct Graph* g, char format);
+Graph *readGraph(char* filename, char format);
 
 // Precondition: *g is already zeroed out
-int readBinaryGraph(char* filename, struct Graph* g);
+Graph *readBinaryGraph(char* filename);
 
 // Precondition: *g is already zeroed out
-void readLadGraph(char* filename, struct Graph* g);
+Graph *readLadGraph(char* filename);
 
+#endif
