@@ -942,8 +942,10 @@ void nuova_print (vector<vector<GraphData>> &gd) {
 }
 
 void produci_soluzione (vector<GraphData> &grafi, vector<GraphData> &sol, int indice, HelpMe & help_me) {
-	Graph *g0 = &grafi.at(indice).g;
-	Graph *g1 = &grafi.at(grafi.size()-1-indice).g;
+	int g0_index = indice, g1_index = grafi.size()-1-indice;
+    //int g0_index = 2*indice, g1_index = 2*indice+1;
+    Graph *g0 = &grafi.at(g0_index).g;
+	Graph *g1 = &grafi.at(g1_index).g;
 	vector<int> g0_deg = calculate_degrees(*g0);
 	vector<int> g1_deg = calculate_degrees(*g1);
 
@@ -977,7 +979,7 @@ void produci_soluzione (vector<GraphData> &grafi, vector<GraphData> &sol, int in
 		vtx_pair.w = vv1[vtx_pair.w];
 	}
 	//cout << sol.size() << " - " << indice << endl;
-	sol.at(indice) = write_Graph(&grafi.at(indice), &grafi.at(grafi.size()-1-indice), solution.first);
+	sol.at(indice) = write_Graph(&grafi.at(g0_index), &grafi.at(g1_index), solution.first);
 	//write_Graph(GraphData* g0, GraphData* g1, vector<VtxPair>& solution)
 }
 
