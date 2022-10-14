@@ -1,0 +1,13 @@
+{
+    "cmake.debugConfig": {
+        "cwd": "${workspaceFolder}/",
+        "args": [
+            "min_max", "-t", "10", "/home/lire/Repo/benchmark-all/mcs10/bvg/b03/mcs10_b03_s100.B00", "/home/lire/Repo/benchmark-all/mcs10/bvg/b03/mcs10_b03_s100.B01", "/home/lire/Repo/benchmark-all/mcs10/bvg/b03/mcs10_b03_s100.B02"
+        ],
+        
+    },
+    "files.associations": {
+        "array": "cpp",
+        "vector": "cpp"
+    }
+}
