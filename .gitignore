@@ -352,3 +352,6 @@ MigrationBackup/
 # Custom
 build/
 mcsp
+*.sln
+*.vcxproj
+*.filters
