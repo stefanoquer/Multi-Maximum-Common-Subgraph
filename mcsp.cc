@@ -511,12 +511,14 @@ void remove_bidomain(vector<Bidomain>& domains, int idx) {
     domains.pop_back();
 }
 
+// 1
 void solve_nopar(const unsigned depth, vector<Graph>& g,
     AtomicIncumbent& global_incumbent,
     vector<VtxPair>& my_incumbent,
     vector<VtxPair>& current, vector<Bidomain>& domains,
     array<vector<int>, MAX_ARGS>& vv, const unsigned int matching_size_goal,
     unsigned long long& my_thread_nodes);
+// 2
 void solve(const unsigned depth, vector<Graph>& g,
     AtomicIncumbent& global_incumbent,
     PerThreadIncumbents& per_thread_incumbents,
@@ -524,6 +526,7 @@ void solve(const unsigned depth, vector<Graph>& g,
            array<vector<int>, MAX_ARGS>& vv, const unsigned int matching_size_goal,
     const Position& position, HelpMe& help_me, unsigned long long& my_thread_nodes);
 
+// 3
 void solve_nopar_recursive(Bidomain& bd, array<vector<int>, MAX_ARGS>& vv, std::vector<Bidomain>& domains,
     std::vector<Graph>& g, std::vector<VtxPair>& current, const unsigned int& depth,
     AtomicIncumbent& global_incumbent, std::vector<VtxPair>& my_incumbent,
@@ -645,6 +648,7 @@ void solve_nopar(const unsigned depth, vector<Graph> & g, /*g0, g1*/
     solve_nopar_recursive(bd, vv, domains, g, current, depth, global_incumbent, my_incumbent, matching_size_goal, my_thread_nodes, bd_idx, nodi_inseriti, 1);
 }
 
+// 4
 void help_solve_recursive(const int& i_end, array<vector<int>, MAX_ARGS>& help_vv, Bidomain& help_bd, int& which_i_should_i_run_next,
                           std::atomic_int& shared_i, std::vector<Bidomain>& help_domains, std::vector<Graph>& g,
                           std::vector<VtxPair>& help_current, const unsigned int& depth, AtomicIncumbent& global_incumbent,
@@ -710,6 +714,7 @@ void help_solve_recursive(const int& i_end, array<vector<int>, MAX_ARGS>& help_v
     }
 }
 
+// 5
 void solve_recursive(const int& i_end, array<vector<int>, MAX_ARGS>& vv, Bidomain& bd, int which_i_should_i_run_next,
                      std::atomic_int& shared_i, std::vector<Bidomain>& domains, std::vector<Graph>& g,
                      std::vector<VtxPair>& current, const unsigned int& depth, AtomicIncumbent& global_incumbent,
@@ -776,6 +781,7 @@ void solve_recursive(const int& i_end, array<vector<int>, MAX_ARGS>& vv, Bidomai
     }
 }
 
+// 1
 void solve(const unsigned depth, vector<Graph> & g,
         AtomicIncumbent & global_incumbent,
         PerThreadIncumbents & per_thread_incumbents,
