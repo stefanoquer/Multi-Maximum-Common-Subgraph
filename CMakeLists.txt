@@ -17,7 +17,7 @@ set(CMAKE_CXX_FLAGS "-Wall -Wextra")
 set(CMAKE_CXX_FLAGS_DEBUG "-g")
 set(CMAKE_CXX_FLAGS_RELEASE "-Ofast")
 
-add_executable(mcsp mcsp.cc graph.cc graph.hh)
+add_executable(mcsp main.cpp App.cpp mcsp.cc graph.cc graph.hh)
 
 set(CPACK_PROJECT_NAME ${PROJECT_NAME})
 set(CPACK_PROJECT_VERSION ${PROJECT_VERSION})
