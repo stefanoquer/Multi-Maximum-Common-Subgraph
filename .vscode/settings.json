@@ -1,0 +1,12 @@
+{
+    "cmake.debugConfig": {
+        "args": [
+            "--min_max",
+            "--bin",
+            "/home/cardone/Repo/tmp/benchmark-all/mcs10/rand/r01/mcs10_r01_s20.A00",
+            "/home/cardone/Repo/tmp/benchmark-all/mcs10/rand/r01/mcs10_r01_s20.A01"
+        ],
+        "cwd": "${workspaceFolder}/",
+        
+    }
+}
