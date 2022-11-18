@@ -48,7 +48,7 @@ void add_edge(Graph& g, int v, int w, bool directed=false, unsigned int val=1) {
     }
 }
 
-struct Graph readDimacsGraph(char* filename, bool directed, bool vertex_labelled) {
+struct Graph readDimacsGraph(std::string filename, bool directed, bool vertex_labelled) {
     struct Graph g(0);
 
 
@@ -96,11 +96,11 @@ struct Graph readDimacsGraph(char* filename, bool directed, bool vertex_labelled
     return g;
 }
 
-struct Graph readLadGraph(char* filename, bool directed) {
+struct Graph readLadGraph(std::string filename, bool directed) {
     struct Graph g(0);
     FILE* f;
     
-    if ((f=fopen(filename, "r"))==NULL)
+    if ((f=fopen(filename.c_str(), "r"))==NULL)
         fail("Cannot open file");
 
     int nvertices = 0;
@@ -132,13 +132,13 @@ int read_word(FILE *fp) {
     return (int)a[0] | (((int)a[1]) << 8);
 }
 
-struct Graph readBinaryGraph(char* filename, bool directed, bool edge_labelled,
+struct Graph readBinaryGraph(std::string filename, bool directed, bool edge_labelled,
         bool vertex_labelled)
 {
     struct Graph g(0);
     FILE* f;
     
-    if ((f=fopen(filename, "rb"))==NULL)
+    if ((f=fopen(filename.c_str(), "rb"))==NULL)
         fail("Cannot open file");
 
     int nvertices = read_word(f);
@@ -180,12 +180,12 @@ int custom_read_word(FILE* fp) {
   return static_cast<int>(a[0]) | ((static_cast<int>(a[1])) << 8);
 }
 
-struct Graph read_bin_graph(const char* filename, bool directed, bool edge_labelled,
+struct Graph read_bin_graph(const std::string filename, bool directed, bool edge_labelled,
                      bool vertex_labelled) {
   Graph g(0);
   FILE* f;
 
-  if ((f = fopen(filename, "rb")) == NULL) fail("Cannot open file");
+  if ((f = fopen(filename.c_str(), "rb")) == NULL) fail("Cannot open file");
 
   int nvertices = custom_read_word(f);
   g = Graph(nvertices);
@@ -219,11 +219,11 @@ struct Graph read_bin_graph(const char* filename, bool directed, bool edge_label
   return g;
 }
 
-Graph read_ioi_graph(const char* filename, bool directed,
+Graph read_ioi_graph(const std::string filename, bool directed,
                      bool vertex_labelled) {
   FILE* f;
 
-  if ((f = fopen(filename, "r")) == NULL) fail("Cannot open file");
+  if ((f = fopen(filename.c_str(), "r")) == NULL) fail("Cannot open file");
 
   int n, m;
 
@@ -247,7 +247,7 @@ Graph read_ioi_graph(const char* filename, bool directed,
   return g;
 }
 
-struct Graph readGraph(char* filename, char format, bool directed, bool edge_labelled, bool vertex_labelled) {
+struct Graph readGraph(std::string filename, char format, bool directed, bool edge_labelled, bool vertex_labelled) {
     struct Graph g(0);
     if (format=='D') g = readDimacsGraph(filename, directed, vertex_labelled);
     else if (format=='L') g = readLadGraph(filename, directed);
