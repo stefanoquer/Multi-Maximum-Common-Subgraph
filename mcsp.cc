@@ -428,7 +428,8 @@ vector<Bidomain> filter_domains(const vector<Bidomain>& d, array<vector<int>, MA
         }
 
         if (accumulate(len_noedge, len_noedge+arguments.arg_num, 1, multiplies<int>{})) {
-            int new_d_sets[arguments.arg_num];
+            vector<int> new_vector_sets(arguments.arg_num);
+            int *new_d_sets = new_vector_sets.data();
             //vector<int> new_d_sets (arguments.arg_num);
             transform(len_edge, len_edge+arguments.arg_num, sets, new_d_sets, std::plus<int>());
             new_d.push_back({ new_d_sets, len_noedge, old_bd.is_adjacent });
