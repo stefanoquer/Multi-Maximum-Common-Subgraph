@@ -8,5 +8,8 @@
         ],
         "cwd": "${workspaceFolder}/",
         
+    },
+    "files.associations": {
+        "array": "cpp"
     }
 }
