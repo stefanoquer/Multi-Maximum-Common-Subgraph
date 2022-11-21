@@ -51,7 +51,7 @@ atomic<int> global_position{ 0 };
 struct args arguments;
 
 /*******************************************************************************
-                                 MCS functions
+                               Data structures
 *******************************************************************************/
 
 struct VtxPair {
@@ -164,6 +164,39 @@ struct Position
             values[d] = v;
     }
 };
+
+/*******************************************************************************
+                                    Utils
+*******************************************************************************/
+
+void show(vector<VtxPair>& current, vector<Bidomain>& domains, array<vector<int>, MAX_ARGS>& vv) {
+    printf("Length of current assignment: %d\n", current.size());
+    printf("Current assignment:");
+
+    for (int i = 0; i < current.size(); i++) {
+        for (int j = 0; j < arguments.arg_num; j++) {
+            if (j == 0)
+                printf("  %d", current[i].vv[j]);
+            else
+                printf("->%d", current[i].vv[j]);
+        }
+    }
+    printf("\n");
+    for (int i = 0; i < domains.size(); i++) {
+        struct Bidomain bd = domains[i];
+        for (int ng = 0; ng < arguments.arg_num; ng++) {
+            printf("Graph %d  ", ng);
+            for (int j = 0; j < bd.len[ng]; j++)
+                printf("%d ", vv[ng][j+bd.sets[ng]]);
+            printf("\n");
+        }
+    }
+    printf("\n\n");
+}
+
+/*******************************************************************************
+                                Parallel queue
+*******************************************************************************/
 
 struct HelpMe
 {
@@ -280,6 +313,10 @@ struct HelpMe
         }
     }
 };
+
+/*******************************************************************************
+                                 MCS functions
+*******************************************************************************/
 
 bool check_sol(const vector<Graph> & g, const vector<VtxPair> & solution) {
 
@@ -512,6 +549,139 @@ void remove_bidomain(vector<Bidomain>& domains, int idx) {
     domains.pop_back();
 }
 
+void solve_first_graph(const unsigned depth, vector<Graph>& g,
+    AtomicIncumbent& global_incumbent,
+    vector<VtxPair>& my_incumbent,
+    vector<VtxPair>& current, vector<Bidomain>& domains,
+    array<vector<int>, MAX_ARGS>& vv, const unsigned int matching_size_goal,
+    unsigned long long& my_thread_nodes,
+    array<int, MAX_ARGS>& nodi_inseriti,
+    array<int, MAX_ARGS> order, Bidomain& bd)
+{
+
+    int pos = order[0];
+    // riduciamo di 1 la dimensione di ciascun dominio non del primo grafo (assumendo di star prendendo un nodo)
+    for (int i = 1; i < arguments.arg_num; i++) {
+        bd.len[order[i]]--;
+    }
+
+    // scegliamo v come il minimo valore nel dominio
+    int v = find_min_value(vv[pos].data(), bd.sets[pos], bd.len[pos]);
+    // rimuoviamo v dal dominio, da ora in poi o si trova nella soluzione o no
+    remove_vtx_from_domain(vv[pos].data(), bd, v, pos);
+
+    // inseriamo v nella soluzione
+    nodi_inseriti[pos] = v;
+    
+    // abbiamo un nodo, esploriamo
+}
+
+bool solve_other_graphs(const unsigned depth, vector<Graph>& g,
+    AtomicIncumbent& global_incumbent,
+    vector<VtxPair>& my_incumbent,
+    vector<VtxPair>& current, vector<Bidomain>& domains,
+    array<vector<int>, MAX_ARGS>& vv, const unsigned int matching_size_goal,
+    unsigned long long& my_thread_nodes,
+    int pos, Bidomain& bd, const int bd_idx,
+    int& w)
+{
+
+    // prendiamo il più piccolo w del dominio
+    int idx = index_of_next_smallest(vv[pos].data(), bd.sets[pos], bd.len[pos] + 1, w);
+    if (idx == -1) {
+        return false; // abbiamo finito i w del dominio
+    }
+    w = vv[pos][bd.sets[pos] + idx];
+
+    // mettiamo w al fondo del dominio
+    vv[pos][bd.sets[pos] + idx] = vv[pos][bd.sets[pos] + bd.len[pos]];
+    vv[pos][bd.sets[pos] + bd.len[pos]] = w;
+
+    return true; // abbiamo un nuovo w, esploriamo
+}
+
+void sorted_solve_nopar(const unsigned depth, vector<Graph> & g, /*g0, g1*/
+    AtomicIncumbent & global_incumbent,
+    vector<VtxPair> & my_incumbent,
+    vector<VtxPair> & current, vector<Bidomain> & domains,
+    array<vector<int>, MAX_ARGS> &vv,
+    const unsigned int matching_size_goal,
+    unsigned long long & my_thread_nodes)
+{
+    if (arguments.verbose) show(current, domains, vv);
+
+    if (abort_due_to_timeout)
+        return;
+
+    my_thread_nodes++;
+
+    if (my_incumbent.size() < current.size()) {
+        my_incumbent = current;
+        global_incumbent.update(current.size());
+    }
+
+    unsigned int bound = current.size() + calc_bound(domains);
+    if (bound <= global_incumbent.value || bound < matching_size_goal)
+        return;
+
+    if (arguments.big_first && global_incumbent.value == matching_size_goal)
+        return;
+
+    
+    // seleziona bidominio
+    int bd_idx = select_bidomain(domains, vv[0].data(), current.size());
+    if (bd_idx == -1)
+        return; // abbiamo finito, più nulla da fare
+    auto &bd = domains[bd_idx];
+
+    array<int, MAX_ARGS> sorted_vv_idx;
+    iota(sorted_vv_idx.begin(), sorted_vv_idx.begin() + MAX_ARGS, 0);
+    //dobbiamo ordinare
+    sort(sorted_vv_idx.begin(), sorted_vv_idx.begin() + arguments.arg_num,
+        [&](const int& a, const int& b) {
+            return (bd.len[a] < bd.len[b]);
+        }
+    );
+
+    array<int, MAX_ARGS> soluzione;
+    for (int i = 0; i < MAX_ARGS; i++) {soluzione[i] = -1;}
+
+    solve_first_graph(depth, g, global_incumbent, my_incumbent, current, domains, vv, matching_size_goal, my_thread_nodes, soluzione, sorted_vv_idx, bd);
+
+    for (int i = 1; i > 0; ) {
+        if (solve_other_graphs(depth, g, global_incumbent, my_incumbent, current, domains, vv, matching_size_goal, my_thread_nodes, sorted_vv_idx[i], bd, bd_idx, soluzione[sorted_vv_idx[i]]))
+        {
+            i ++;
+            if (i = arguments.arg_num) {
+                current.push_back(VtxPair(soluzione.data()));
+                auto new_domains = filter_domains(domains, vv, g, soluzione.data(), arguments.directed || arguments.edge_labelled);
+                sorted_solve_nopar(depth + 1, g, global_incumbent, my_incumbent, current, new_domains, vv, matching_size_goal, my_thread_nodes);
+                i --;
+                current.pop_back();
+            }
+        }
+        else
+        {
+            soluzione[sorted_vv_idx[i]] = -1;
+            i --;
+        }
+    }
+
+    if (bd.len[sorted_vv_idx[0]] == 0)
+    {
+        remove_bidomain(domains, bd_idx);
+    }
+    else 
+    {
+        for (int i = 1; i < arguments.arg_num; i++) {
+            bd.len[sorted_vv_idx[i]] ++;
+        }
+    }
+    
+    // adesso proviamo a proseguire senza prendere questo nodo (v)
+    sorted_solve_nopar(depth + 1, g, global_incumbent, my_incumbent, current, domains, vv, matching_size_goal, my_thread_nodes);
+}
+
 // 1
 void solve_nopar(const unsigned depth, vector<Graph>& g,
     AtomicIncumbent& global_incumbent,
@@ -578,31 +748,6 @@ void solve_nopar_recursive(Bidomain& bd, array<vector<int>, MAX_ARGS>& vv, std::
             }
         }
     }
-}
-
-void show(vector<VtxPair>& current, vector<Bidomain>& domains, array<vector<int>, MAX_ARGS>& vv) {
-    printf("Length of current assignment: %d\n", current.size());
-    printf("Current assignment:");
-
-    for (int i = 0; i < current.size(); i++) {
-        for (int j = 0; j < arguments.arg_num; j++) {
-            if (j == 0)
-                printf("  %d", current[i].vv[j]);
-            else
-                printf("->%d", current[i].vv[j]);
-        }
-    }
-    printf("\n");
-    for (int i = 0; i < domains.size(); i++) {
-        struct Bidomain bd = domains[i];
-        for (int ng = 0; ng < arguments.arg_num; ng++) {
-            printf("Graph %d  ", ng);
-            for (int j = 0; j < bd.len[ng]; j++)
-                printf("%d ", vv[ng][j+bd.sets[ng]]);
-            printf("\n");
-        }
-    }
-    printf("\n\n");
 }
 
 void solve_nopar(const unsigned depth, vector<Graph> & g, /*g0, g1*/
@@ -676,7 +821,8 @@ void help_solve_recursive(const int& i_end, array<vector<int>, MAX_ARGS>& help_v
 
                 help_current.push_back(VtxPair(nodi_inseriti));
                 if (depth > split_levels) {
-                    solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, help_current, new_domains, help_vv, matching_size_goal, help_thread_nodes);
+                    //solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, help_current, new_domains, help_vv, matching_size_goal, help_thread_nodes);
+                    sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, help_current, new_domains, help_vv, matching_size_goal, help_thread_nodes);
                 }
                 else {
                     auto new_position = position;
@@ -703,7 +849,8 @@ void help_solve_recursive(const int& i_end, array<vector<int>, MAX_ARGS>& help_v
                     remove_bidomain(help_domains, help_bd_idx);
 
                 if (depth > split_levels) {
-                    solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, help_current, help_domains, help_vv, matching_size_goal, help_thread_nodes);
+                    //solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, help_current, help_domains, help_vv, matching_size_goal, help_thread_nodes);
+                    sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, help_current, help_domains, help_vv, matching_size_goal, help_thread_nodes);
                 }
                 else {
                     auto new_position = position;
@@ -741,7 +888,8 @@ void solve_recursive(const int& i_end, array<vector<int>, MAX_ARGS>& vv, Bidomai
                 auto new_domains = filter_domains(domains, vv, g, nodi_inseriti, arguments.directed || arguments.edge_labelled);
                 current.push_back(VtxPair(nodi_inseriti));
                 if (depth > split_levels) {
-                    solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, current, new_domains, vv, matching_size_goal, main_thread_nodes);
+                    //solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, current, new_domains, vv, matching_size_goal, main_thread_nodes);
+                    sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, current, new_domains, vv, matching_size_goal, main_thread_nodes);
                 }
                 else {
                     auto new_position = position;
@@ -769,7 +917,8 @@ void solve_recursive(const int& i_end, array<vector<int>, MAX_ARGS>& vv, Bidomai
 
 
                 if (depth > split_levels) {
-                    solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, current, domains, vv, matching_size_goal, main_thread_nodes);
+                    //solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, current, domains, vv, matching_size_goal, main_thread_nodes);
+                    sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, current, domains, vv, matching_size_goal, main_thread_nodes);
                 }
                 else {
                     auto new_position = position;
@@ -878,7 +1027,8 @@ void solve(const unsigned depth, vector<Graph> & g,
                         
                         help_current.push_back(VtxPair(nodi_inseriti));
                         if (depth > split_levels) {
-                            solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, help_current, new_domains, help_vv, matching_size_goal, help_thread_nodes);
+                            //solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, help_current, new_domains, help_vv, matching_size_goal, help_thread_nodes);
+                            sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, help_current, new_domains, help_vv, matching_size_goal, help_thread_nodes);
                         }
                         else {
                             auto new_position = position;
@@ -908,7 +1058,8 @@ void solve(const unsigned depth, vector<Graph> & g,
                     if (i == which_i_should_i_run_next) {
                         which_i_should_i_run_next = shared_i++;
                         if (depth > split_levels) {
-                            solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, help_current, help_domains, help_vv, matching_size_goal, help_thread_nodes);
+                            //solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, help_current, help_domains, help_vv, matching_size_goal, help_thread_nodes);
+                            sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, help_current, help_domains, help_vv, matching_size_goal, help_thread_nodes);
                         }
                         else {
                             auto new_position = position;
@@ -954,7 +1105,8 @@ void solve(const unsigned depth, vector<Graph> & g,
                         
                         current.push_back(VtxPair(nodi_inseriti));
                         if (depth > split_levels) {
-                            solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, current, new_domains, vv, matching_size_goal, main_thread_nodes);
+                            //solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, current, new_domains, vv, matching_size_goal, main_thread_nodes);
+                            sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, current, new_domains, vv, matching_size_goal, main_thread_nodes);
                         }
                         else {
                             auto new_position = position;
@@ -985,7 +1137,8 @@ void solve(const unsigned depth, vector<Graph> & g,
                     if (i == which_i_should_i_run_next) {
                         which_i_should_i_run_next = shared_i++;
                         if (depth > split_levels) {
-                            solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, current, domains, vv, matching_size_goal, main_thread_nodes);
+                            //solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, current, domains, vv, matching_size_goal, main_thread_nodes);
+                            sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, current, domains, vv, matching_size_goal, main_thread_nodes);
                         }
                         else {
                             auto new_position = position;
