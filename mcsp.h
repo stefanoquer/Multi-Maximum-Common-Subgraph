@@ -2,7 +2,7 @@
 #include <string>
 #include <thread>
 
-enum Heuristic { min_max, min_product };
+enum Heuristic { min_max, min_min, min_sum, min_product };
 
 struct args {
     bool quiet;

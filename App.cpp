@@ -24,8 +24,10 @@ App::App(const std::string& desc, const std::string& filename) : CLI::App(desc, 
     add_option("-t, --timeout", arguments.timeout, "Specify a timeout (seconds)");
     add_option("-T, --thread", arguments.threads, "Specify how many threads to use");
     auto heuristic = this->add_option_group("Heuristic");
-    heuristic->add_flag("-m, --min_max", _set_minmax, "Use min_max heuristic");
-    heuristic->add_flag("-p, --min_product", _set_minproduct, "Use min_product heuristic");
+    heuristic->add_flag("--min_max", _set_minmax, "Use min_max heuristic");
+    heuristic->add_flag("--min_min", _set_minmin, "Use min_min heuristic");
+    heuristic->add_flag("--min_sum", _set_minsum, "Use min_sum heuristic");
+    heuristic->add_flag("--min_product", _set_minproduct, "Use min_product heuristic");
     heuristic->required(true);
     add_option("files", arguments.filenames, "At least 2 input files")->check(CLI::ExistingFile);
 
@@ -49,6 +51,17 @@ void App::run() {
     else if (_set_minproduct) {
         arguments.heuristic = Heuristic::min_product;
     }
+    else if (_set_minmin) {
+        arguments.heuristic = Heuristic::min_min;
+    }
+    else if (_set_minsum) {
+        arguments.heuristic = Heuristic::min_sum;
+    }
+    else {
+        cout << "No valid heuristic detected!" << endl;
+        return;
+    }
+
     cout << "Starting ... " << endl;
     
     mcsp m;

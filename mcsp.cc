@@ -409,9 +409,25 @@ int select_bidomain(const vector<Bidomain>& domains, int* left,
     for (unsigned int i=0; i<domains.size(); i++) {
         const Bidomain &bd = domains[i];
         if (arguments.connected && current_matching_size>0 && !bd.is_adjacent) continue;
-        int len = arguments.heuristic == min_max ?
-                *max_element(bd.len, bd.len+arguments.arg_num) :
-                accumulate(bd.len, bd.len+arguments.arg_num, 1, std::multiplies<int>{});
+        int len;
+        switch (arguments.heuristic) {
+            case min_max:
+                len = *max_element(bd.len, bd.len+arguments.arg_num);
+            break;
+            case min_min:
+                len = *min_element(bd.len, bd.len+arguments.arg_num);
+            break;
+            case min_sum:
+                len = accumulate(bd.len, bd.len+arguments.arg_num, 0);
+            break;
+            case min_product:
+                len = accumulate(bd.len, bd.len+arguments.arg_num, 1, std::multiplies<int>{});
+            break;
+            default:
+                cout << "Error, not implemented heuristic!" << endl;
+                exit (-1);
+            break;
+        }
         if (len < min_size) {
             min_size = len;
             min_tie_breaker = find_min_value(left, bd.sets[0], bd.len[0]);
