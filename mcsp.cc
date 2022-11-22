@@ -1690,6 +1690,6 @@ void mcsp::start(args &arg) {
     if (!check_sol(gi, solution.first))
         fail("\n\n*** Error: Invalid solution\n");
         
-    cout << ">>> " << solution.first.size() << " - " << (double) time_elapsed/1000 << endl;
+    cout << ">>> " << solution.first.size() << " - " << solution.second << " - " << (double) time_elapsed/1000 << endl;
 }
 
