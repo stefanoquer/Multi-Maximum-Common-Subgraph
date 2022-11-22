@@ -195,7 +195,7 @@ void show(vector<VtxPair>& current, vector<Bidomain>& domains, array<vector<int>
     printf("\n\n");
 }
 
-void string_show(vector<VtxPair>& current, vector<Bidomain>& domains, array<vector<int>, MAX_ARGS>& vv) {
+void string_show(vector<VtxPair>& current, vector<Bidomain>& domains, array<vector<int>, MAX_ARGS>& vv, int depth) {
     string s = "";
     //printf("Length of current assignment: %d\n", current.size());
     //printf("Current assignment:");
@@ -212,6 +212,7 @@ void string_show(vector<VtxPair>& current, vector<Bidomain>& domains, array<vect
             }
         }
     }
+    s = s + ": " + to_string(depth);
     s = s + "\n";
     cout << s;
     /*printf("\n");
@@ -643,7 +644,7 @@ void sorted_solve_nopar(const unsigned depth, vector<Graph> & g,
 {
     if (arguments.verbose) {
         //show(current, domains, vv);
-        string_show(current, domains, vv);
+        string_show(current, domains, vv, depth);
     }
 
     if (abort_due_to_timeout)
@@ -731,7 +732,7 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
 
     if (arguments.verbose) {
         //show(current, domains, vv);
-        string_show(current, domains, vv);
+        string_show(current, domains, vv, depth);
     }
     if (abort_due_to_timeout)
         return;
@@ -1013,7 +1014,7 @@ void solve_nopar(const unsigned depth, vector<Graph> & g, /*g0, g1*/
 {
     if (arguments.verbose) {
         //show(current, domains, vv);
-        string_show(current, domains, vv);
+        string_show(current, domains, vv, depth);
     }
 
     if (abort_due_to_timeout)
@@ -1199,7 +1200,7 @@ void solve(const unsigned depth, vector<Graph> & g,
 
     if (arguments.verbose) {
         //show(current, domains, vv);
-        string_show(current, domains, vv);
+        string_show(current, domains, vv, depth);
     }
     if (abort_due_to_timeout)
         return;
