@@ -688,7 +688,7 @@ void sorted_solve_nopar(const unsigned depth, vector<Graph> & g,
         if (solve_other_graphs(depth, g, global_incumbent, my_incumbent, current, domains, vv, matching_size_goal, my_thread_nodes, sorted_vv_idx[i], bd, bd_idx, soluzione[sorted_vv_idx[i]]))
         {
             i ++;
-            if (i = arguments.arg_num) {
+            if (i == arguments.arg_num) {
                 current.push_back(VtxPair(soluzione.data()));
                 auto new_domains = filter_domains(domains, vv, g, soluzione.data(), arguments.directed || arguments.edge_labelled);
                 sorted_solve_nopar(depth + 1, g, global_incumbent, my_incumbent, current, new_domains, vv, matching_size_goal, my_thread_nodes);
@@ -814,7 +814,7 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
                 if (i != 1 || which_i_should_i_run_next == w0_index) {
                     which_i_should_i_run_next = shared_i++;
                     i++;
-                    if (i = arguments.arg_num) {
+                    if (i == arguments.arg_num) {
                         help_current.push_back(VtxPair(help_soluzione.data()));
                         auto new_domains = filter_domains(help_domains, help_vv, g, help_soluzione.data(), arguments.directed || arguments.edge_labelled);
                         if (depth > split_levels) {
