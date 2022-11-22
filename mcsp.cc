@@ -709,11 +709,7 @@ void sorted_solve_nopar(const unsigned depth, vector<Graph> & g,
             if (i == arguments.arg_num) {
                 current.push_back(VtxPair(soluzione.data()));
                 auto new_domains = filter_domains(domains, vv, g, soluzione.data(), arguments.directed || arguments.edge_labelled);
-                int prev_len = bd.len[sorted_vv_idx[0]];
                 sorted_solve_nopar(depth + 1, g, global_incumbent, my_incumbent, current, new_domains, vv, matching_size_goal, my_thread_nodes);
-                if(prev_len != bd.len[sorted_vv_idx[0]]) {
-                    cout << "ERRORE" << endl;
-                }
                 i --;
                 current.pop_back();
             }
@@ -842,23 +838,12 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
                         help_current.push_back(VtxPair(help_soluzione.data()));
                         auto new_domains = filter_domains(help_domains, help_vv, g, help_soluzione.data(), arguments.directed || arguments.edge_labelled);
                         if (depth > split_levels) {
-                            int prev_len = bd.len[sorted_vv_idx[0]];
                             sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(this_thread::get_id())->second, help_current, new_domains, help_vv, matching_size_goal, help_thread_nodes);
-                            if(prev_len != bd.len[sorted_vv_idx[0]]) {
-                                cout << "ERRORE" << endl;
-                            }
                         }
                         else {
                             auto new_position = position;
                             new_position.add(depth, ++global_position);
-
-                            int prev_len = bd.len[sorted_vv_idx[0]];
-
                             sorted_solve(depth + 1, g, global_incumbent, per_thread_incumbents, help_current, new_domains, help_vv, matching_size_goal, new_position, help_me, help_thread_nodes);
-
-                            if(prev_len != bd.len[sorted_vv_idx[0]]) {
-                                cout << "ERRORE" << endl;
-                            }
                         }
                         i--;
                         help_current.pop_back();
@@ -885,7 +870,7 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
         }
 
         // adesso proviamo a proseguire senza prendere questo nodo (v)
-        if (which_i_should_i_run_next == w0_index+1) {
+        if (which_i_should_i_run_next == w0_index) {
             //which_i_should_i_run_next = shared_i++;
             if (depth > split_levels) {
                 sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(this_thread::get_id())->second, help_current, help_domains, help_vv, matching_size_goal, help_thread_nodes);
@@ -909,6 +894,7 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
 
         int w0_index = 0;
 
+        int w0_size = bd.len[sorted_vv_idx[1]];
         for (int i = 1; i > 0; ) {
             if (solve_other_graphs(depth, g, global_incumbent, per_thread_incumbents.find(this_thread::get_id())->second, current, domains, vv, matching_size_goal, my_thread_nodes, sorted_vv_idx[i], bd, bd_idx, soluzione[sorted_vv_idx[i]]))
             {
@@ -921,25 +907,12 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
                         current.push_back(VtxPair(soluzione.data()));
                         auto new_domains = filter_domains(domains, vv, g, soluzione.data(), arguments.directed || arguments.edge_labelled);
                         if (depth > split_levels) {
-                            int prev_len = bd.len[sorted_vv_idx[0]];
-
                             sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(this_thread::get_id())->second, current, new_domains, vv, matching_size_goal, my_thread_nodes);
-                            
-                            if(prev_len != bd.len[sorted_vv_idx[0]]) {
-                                cout << "ERRORE" << endl;
-                            }
                         }
                         else {
                             auto new_position = position;
                             new_position.add(depth, ++global_position);
-
-                            int prev_len = bd.len[sorted_vv_idx[0]];
-
                             sorted_solve(depth + 1, g, global_incumbent, per_thread_incumbents, current, new_domains, vv, matching_size_goal, new_position, help_me, my_thread_nodes);
-
-                            if(prev_len != bd.len[sorted_vv_idx[0]]) {
-                                cout << "ERRORE" << endl;
-                            }
                         }
                         i--;
                         current.pop_back();
@@ -966,7 +939,7 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
         }
 
         // adesso proviamo a proseguire senza prendere questo nodo (v)
-        if (which_i_should_i_run_next == w0_index+1) {
+        if (which_i_should_i_run_next == w0_index) {
             //which_i_should_i_run_next = shared_i++;
             if (depth > split_levels) {
                 sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(this_thread::get_id())->second, current, domains, vv, matching_size_goal, my_thread_nodes);
