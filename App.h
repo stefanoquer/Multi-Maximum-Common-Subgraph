@@ -16,4 +16,6 @@ public:
 private:
     bool _set_minmax = false;
     bool _set_minproduct = false;
+    bool _set_minmin = false;
+    bool _set_minsum = false;
 };

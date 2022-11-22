@@ -195,7 +195,7 @@ void show(vector<VtxPair>& current, vector<Bidomain>& domains, array<vector<int>
     printf("\n\n");
 }
 
-void string_show(vector<VtxPair>& current, vector<Bidomain>& domains, array<vector<int>, MAX_ARGS>& vv) {
+void string_show(vector<VtxPair>& current, vector<Bidomain>& domains, array<vector<int>, MAX_ARGS>& vv, int depth) {
     string s = "";
     //printf("Length of current assignment: %d\n", current.size());
     //printf("Current assignment:");
@@ -213,6 +213,7 @@ void string_show(vector<VtxPair>& current, vector<Bidomain>& domains, array<vect
         }
         s = s + " ";
     }
+    s = s + ": " + to_string(depth);
     s = s + "\n";
     cout << s;
     /*printf("\n");
@@ -408,9 +409,25 @@ int select_bidomain(const vector<Bidomain>& domains, int* left,
     for (unsigned int i=0; i<domains.size(); i++) {
         const Bidomain &bd = domains[i];
         if (arguments.connected && current_matching_size>0 && !bd.is_adjacent) continue;
-        int len = arguments.heuristic == min_max ?
-                *max_element(bd.len, bd.len+arguments.arg_num) :
-                accumulate(bd.len, bd.len+arguments.arg_num, 1, std::multiplies<int>{});
+        int len;
+        switch (arguments.heuristic) {
+            case min_max:
+                len = *max_element(bd.len, bd.len+arguments.arg_num);
+            break;
+            case min_min:
+                len = *min_element(bd.len, bd.len+arguments.arg_num);
+            break;
+            case min_sum:
+                len = accumulate(bd.len, bd.len+arguments.arg_num, 0);
+            break;
+            case min_product:
+                len = accumulate(bd.len, bd.len+arguments.arg_num, 1, std::multiplies<int>{});
+            break;
+            default:
+                cout << "Error, not implemented heuristic!" << endl;
+                exit (-1);
+            break;
+        }
         if (len < min_size) {
             min_size = len;
             min_tie_breaker = find_min_value(left, bd.sets[0], bd.len[0]);
@@ -644,7 +661,7 @@ void sorted_solve_nopar(const unsigned depth, vector<Graph> & g,
 {
     if (arguments.verbose) {
         //show(current, domains, vv);
-        string_show(current, domains, vv);
+        string_show(current, domains, vv, depth);
     }
 
     if (abort_due_to_timeout)
@@ -692,11 +709,7 @@ void sorted_solve_nopar(const unsigned depth, vector<Graph> & g,
             if (i == arguments.arg_num) {
                 current.push_back(VtxPair(soluzione.data()));
                 auto new_domains = filter_domains(domains, vv, g, soluzione.data(), arguments.directed || arguments.edge_labelled);
-                int prev_len = bd.len[sorted_vv_idx[0]];
                 sorted_solve_nopar(depth + 1, g, global_incumbent, my_incumbent, current, new_domains, vv, matching_size_goal, my_thread_nodes);
-                if(prev_len != bd.len[sorted_vv_idx[0]]) {
-                    cout << "ERRORE" << endl;
-                }
                 i --;
                 current.pop_back();
             }
@@ -736,7 +749,7 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
 
     if (arguments.verbose) {
         //show(current, domains, vv);
-        string_show(current, domains, vv);
+        string_show(current, domains, vv, depth);
     }
     if (abort_due_to_timeout)
         return;
@@ -825,23 +838,12 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
                         help_current.push_back(VtxPair(help_soluzione.data()));
                         auto new_domains = filter_domains(help_domains, help_vv, g, help_soluzione.data(), arguments.directed || arguments.edge_labelled);
                         if (depth > split_levels) {
-                            int prev_len = bd.len[sorted_vv_idx[0]];
                             sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(this_thread::get_id())->second, help_current, new_domains, help_vv, matching_size_goal, help_thread_nodes);
-                            if(prev_len != bd.len[sorted_vv_idx[0]]) {
-                                cout << "ERRORE" << endl;
-                            }
                         }
                         else {
                             auto new_position = position;
                             new_position.add(depth, ++global_position);
-
-                            int prev_len = bd.len[sorted_vv_idx[0]];
-
                             sorted_solve(depth + 1, g, global_incumbent, per_thread_incumbents, help_current, new_domains, help_vv, matching_size_goal, new_position, help_me, help_thread_nodes);
-
-                            if(prev_len != bd.len[sorted_vv_idx[0]]) {
-                                cout << "ERRORE" << endl;
-                            }
                         }
                         i--;
                         help_current.pop_back();
@@ -868,7 +870,7 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
         }
 
         // adesso proviamo a proseguire senza prendere questo nodo (v)
-        if (which_i_should_i_run_next == w0_index+1) {
+        if (which_i_should_i_run_next == w0_index) {
             //which_i_should_i_run_next = shared_i++;
             if (depth > split_levels) {
                 sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(this_thread::get_id())->second, help_current, help_domains, help_vv, matching_size_goal, help_thread_nodes);
@@ -892,6 +894,7 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
 
         int w0_index = 0;
 
+        int w0_size = bd.len[sorted_vv_idx[1]];
         for (int i = 1; i > 0; ) {
             if (solve_other_graphs(depth, g, global_incumbent, per_thread_incumbents.find(this_thread::get_id())->second, current, domains, vv, matching_size_goal, my_thread_nodes, sorted_vv_idx[i], bd, bd_idx, soluzione[sorted_vv_idx[i]]))
             {
@@ -904,25 +907,12 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
                         current.push_back(VtxPair(soluzione.data()));
                         auto new_domains = filter_domains(domains, vv, g, soluzione.data(), arguments.directed || arguments.edge_labelled);
                         if (depth > split_levels) {
-                            int prev_len = bd.len[sorted_vv_idx[0]];
-
                             sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(this_thread::get_id())->second, current, new_domains, vv, matching_size_goal, my_thread_nodes);
-                            
-                            if(prev_len != bd.len[sorted_vv_idx[0]]) {
-                                cout << "ERRORE" << endl;
-                            }
                         }
                         else {
                             auto new_position = position;
                             new_position.add(depth, ++global_position);
-
-                            int prev_len = bd.len[sorted_vv_idx[0]];
-
                             sorted_solve(depth + 1, g, global_incumbent, per_thread_incumbents, current, new_domains, vv, matching_size_goal, new_position, help_me, my_thread_nodes);
-
-                            if(prev_len != bd.len[sorted_vv_idx[0]]) {
-                                cout << "ERRORE" << endl;
-                            }
                         }
                         i--;
                         current.pop_back();
@@ -949,7 +939,7 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
         }
 
         // adesso proviamo a proseguire senza prendere questo nodo (v)
-        if (which_i_should_i_run_next == w0_index+1) {
+        if (which_i_should_i_run_next == w0_index) {
             //which_i_should_i_run_next = shared_i++;
             if (depth > split_levels) {
                 sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(this_thread::get_id())->second, current, domains, vv, matching_size_goal, my_thread_nodes);
@@ -1046,7 +1036,7 @@ void solve_nopar(const unsigned depth, vector<Graph> & g, /*g0, g1*/
 {
     if (arguments.verbose) {
         //show(current, domains, vv);
-        string_show(current, domains, vv);
+        string_show(current, domains, vv, depth);
     }
 
     if (abort_due_to_timeout)
@@ -1232,7 +1222,7 @@ void solve(const unsigned depth, vector<Graph> & g,
 
     if (arguments.verbose) {
         //show(current, domains, vv);
-        string_show(current, domains, vv);
+        string_show(current, domains, vv, depth);
     }
     if (abort_due_to_timeout)
         return;
