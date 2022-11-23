@@ -26,5 +26,5 @@ struct args {
 
 class mcsp {
 public:
-    void start(args &arguments);
+    void start(const args &arg);
 };
