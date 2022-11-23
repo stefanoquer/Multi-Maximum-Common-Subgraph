@@ -601,6 +601,12 @@ void sorted_solve_nopar(const unsigned depth, vector<Graph> & g,
     const unsigned int matching_size_goal,
     unsigned long long & my_thread_nodes)
 {
+
+    if (my_incumbent.size() < current.size()) {
+        my_incumbent = current;
+        global_incumbent.update(current.size());
+    }
+
     if (arguments.verbose) {
         //show(current, domains, vv);
         string_show(current, depth);
@@ -610,11 +616,6 @@ void sorted_solve_nopar(const unsigned depth, vector<Graph> & g,
         return;
 
     my_thread_nodes++;
-
-    if (my_incumbent.size() < current.size()) {
-        my_incumbent = current;
-        global_incumbent.update(current.size());
-    }
 
     const unsigned int bound = current.size() + calc_bound(domains);
     if (bound <= global_incumbent.value || bound < matching_size_goal)
@@ -690,6 +691,11 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
 {
 
 
+    if (per_thread_incumbents.find(std::this_thread::get_id())->second.size() < current.size()) {
+        per_thread_incumbents.find(std::this_thread::get_id())->second = current;
+        global_incumbent.update(current.size());
+    }
+
     if (arguments.verbose) {
         //show(current, domains, vv);
         string_show(current, depth);
@@ -698,11 +704,6 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
         return;
 
     my_thread_nodes++;
-
-    if (per_thread_incumbents.find(std::this_thread::get_id())->second.size() < current.size()) {
-        per_thread_incumbents.find(std::this_thread::get_id())->second = current;
-        global_incumbent.update(current.size());
-    }
 
     const unsigned int bound = current.size() + calc_bound(domains);
     if (bound <= global_incumbent.value || bound < matching_size_goal)
@@ -728,27 +729,27 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
     array<int, MAX_ARGS> soluzione = {};
     for (int i = 0; i < MAX_ARGS; i++) { soluzione[i] = -1; }
 
+    solve_first_graph(vv, soluzione, sorted_vv_idx, bd);
+
     std::atomic<int> shared_i{ 0 };
     const int i_end = bd.len[1] + 2; /* including the null */
 
     // Version of the loop used by helpers
     const std::function<void(unsigned long long&)> helper_function =
         [&shared_i, &g, &global_incumbent, &per_thread_incumbents, &position,
-        &depth, i_end, matching_size_goal, &help_me, current, domains, vv, bd_idx, sorted_vv_idx]
+        &depth, i_end, matching_size_goal, &help_me, current, domains, vv, bd_idx, sorted_vv_idx, soluzione]
         (unsigned long long& help_thread_nodes) 
     {
-        vector<VtxPair> help_current = current;
-        vector<Bidomain> help_domains = domains;
-        array<vector<int>, MAX_ARGS> help_vv = vv;
-        array<int, MAX_ARGS> help_soluzione = {};
-        for (int i = 0; i < MAX_ARGS; i++) { help_soluzione[i] = -1; }
-
-        int w0_index = 0; //mi chiedo se la prima w è già stata esplorata da qualcun altro
 
         int which_i_should_i_run_next = shared_i++;
 
         if (which_i_should_i_run_next >= i_end)
             return; /* don't waste time recomputing */
+        
+        vector<VtxPair> help_current = current;
+        vector<Bidomain> help_domains = domains;
+        array<vector<int>, MAX_ARGS> help_vv = vv;
+        array<int, MAX_ARGS> help_soluzione = soluzione;
 
         /* recalculate to this point */
         /* rerun important stuff from before the loop */
@@ -766,7 +767,9 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
         //);
 
         //gestiamo il primo grafo
-        solve_first_graph(help_vv, help_soluzione, sorted_vv_idx, bd);
+        //solve_first_graph(help_vv, help_soluzione, sorted_vv_idx, bd);
+
+        int w0_index = 0; //mi chiedo se la prima w è già stata esplorata da qualcun altro
 
         //gestiamo il secondo grafo
         for (int i = 1; i > 0; ) {
@@ -835,8 +838,6 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
     // Version of the loop used by the main thread
     const std::function<void(unsigned long long&)> main_function = [&](unsigned long long& main_thread_nodes) {
 
-        solve_first_graph(vv, soluzione, sorted_vv_idx, bd);
-
         int w0_index = 0;
 
         for (int i = 1; i > 0; ) {
@@ -864,7 +865,7 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
                         which_i_should_i_run_next = shared_i++;
                     }
                 }
-                w0_index += (i == 1);
+                w0_index += (prev_i == 1);
             }
             else
             {
