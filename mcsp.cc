@@ -691,7 +691,7 @@ void sorted_solve_nopar(const unsigned depth, vector<Graph> & g,
     array<int, MAX_ARGS> sorted_vv_idx;
     iota(sorted_vv_idx.begin(), sorted_vv_idx.begin() + MAX_ARGS, 0);
     //dobbiamo ordinare
-    sort(sorted_vv_idx.begin(), sorted_vv_idx.begin() + arguments.arg_num,
+    stable_sort(sorted_vv_idx.begin(), sorted_vv_idx.begin() + arguments.arg_num,
         [&](const int& a, const int& b) {
             return (bd.len[a] < bd.len[b]);
         }
@@ -776,7 +776,7 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
     array<int, MAX_ARGS> sorted_vv_idx;
     iota(sorted_vv_idx.begin(), sorted_vv_idx.begin() + MAX_ARGS, 0);
     //dobbiamo ordinare
-    sort(sorted_vv_idx.begin(), sorted_vv_idx.begin() + arguments.arg_num,
+    stable_sort(sorted_vv_idx.begin(), sorted_vv_idx.begin() + arguments.arg_num,
         [&](const int& a, const int& b) {
             return (bd.len[a] < bd.len[b]);
         }
@@ -790,14 +790,16 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
 
     // Version of the loop used by helpers
     std::function<void(unsigned long long&)> helper_function =
-        [&shared_i, &g, &global_incumbent, &per_thread_incumbents, &position, &depth,
-        i_end, matching_size_goal, &help_me, current, domains, vv, soluzione]
+        [&shared_i, &g, &global_incumbent, &per_thread_incumbents, &position,
+        &depth, i_end, matching_size_goal, &help_me, current, domains, vv, bd_idx]
         (unsigned long long& help_thread_nodes) 
     {
         vector<VtxPair> help_current = current;
         vector<Bidomain> help_domains = domains;
         array<vector<int>, MAX_ARGS> help_vv = vv;
-        array<int, MAX_ARGS> help_soluzione = soluzione;
+        array<int, MAX_ARGS> help_soluzione = {};
+        for (int i = 0; i < MAX_ARGS; i++) { help_soluzione[i] = -1; }
+
         int w0_index = 0; //mi chiedo se la prima w è già stata esplorata da qualcun altro
 
         int which_i_should_i_run_next = shared_i++;
@@ -806,7 +808,6 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
             return; /* don't waste time recomputing */
 
         /* recalculate to this point */
-
         /* rerun important stuff from before the loop */
         int bd_idx = select_bidomain(help_domains, help_vv[0].data(), help_current.size());
         if (bd_idx == -1)   // In the MCCS case, there may be nothing we can branch on
@@ -816,7 +817,7 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
         array<int, MAX_ARGS> sorted_vv_idx;
         iota(sorted_vv_idx.begin(), sorted_vv_idx.begin() + MAX_ARGS, 0);
         //dobbiamo ordinare
-        sort(sorted_vv_idx.begin(), sorted_vv_idx.begin() + arguments.arg_num,
+        stable_sort(sorted_vv_idx.begin(), sorted_vv_idx.begin() + arguments.arg_num,
             [&](const int& a, const int& b) {
             return (bd.len[a] < bd.len[b]);
         }
@@ -829,7 +830,9 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
         for (int i = 1; i > 0; ) {
             if (solve_other_graphs(depth, g, global_incumbent, per_thread_incumbents.find(this_thread::get_id())->second, help_current, help_domains, help_vv, matching_size_goal, help_thread_nodes, sorted_vv_idx[i], bd, bd_idx, help_soluzione[sorted_vv_idx[i]]))
             {
-                if (i != 1 || which_i_should_i_run_next == w0_index) {
+                bool should_i = (which_i_should_i_run_next == w0_index);
+                w0_index += (i == 1);
+                if (i != 1 || should_i) {
                     if (i == 1) {
                         which_i_should_i_run_next = shared_i++;
                     }
@@ -849,7 +852,6 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
                         help_current.pop_back();
                     }
                 }
-                w0_index += (i == 1);
             }
             else
             {
@@ -894,11 +896,12 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
 
         int w0_index = 0;
 
-        int w0_size = bd.len[sorted_vv_idx[1]];
         for (int i = 1; i > 0; ) {
             if (solve_other_graphs(depth, g, global_incumbent, per_thread_incumbents.find(this_thread::get_id())->second, current, domains, vv, matching_size_goal, my_thread_nodes, sorted_vv_idx[i], bd, bd_idx, soluzione[sorted_vv_idx[i]]))
             {
-                if (i != 1 || which_i_should_i_run_next == w0_index) {
+                bool should_i = (which_i_should_i_run_next == w0_index);
+                w0_index += (i == 1);
+                if (i != 1 || should_i) {
                     if (i == 1) {
                         which_i_should_i_run_next = shared_i++;
                     }
@@ -918,7 +921,6 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
                         current.pop_back();
                     }
                 }
-                w0_index += (i == 1);
             }
             else
             {
@@ -952,10 +954,13 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
         }
     };
 
-    if (depth <= split_levels)
+    if (depth <= split_levels) {
         help_me.get_help_with(position, main_function, helper_function, my_thread_nodes);
-    else
+    }
+    else {
         main_function(my_thread_nodes);
+    }
+
 }
 
 // 1
