@@ -67,7 +67,7 @@ struct Graph readDimacsGraph(std::string filename, bool directed, bool vertex_la
     int label;
 
     for (std::string line; getline(f, line, '\n'); ) {
-        if (nchar > 0) {
+        if (line.size() > 0) {
             switch (line[0]) {
             case 'p':
                 if (sscanf(line.c_str(), "p edge %d %d", &nvertices, &medges)!=2)
