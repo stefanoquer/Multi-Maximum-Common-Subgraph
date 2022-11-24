@@ -732,7 +732,7 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
     solve_first_graph(vv, soluzione, sorted_vv_idx, bd);
 
     std::atomic<int> shared_i{ 0 };
-    const int i_end = bd.len[1] + 2; /* including the null */
+    const int i_end = bd.len[sorted_vv_idx[1]] + 2; /* including the null */
 
     // Version of the loop used by helpers
     const std::function<void(unsigned long long&)> helper_function =
