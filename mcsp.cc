@@ -312,7 +312,7 @@ struct HelpMe
                                  MCS functions
 *******************************************************************************/
 
-bool check_sol(const vector<Graph> & g, const vector<VtxPair> & solution) {
+inline bool check_sol(const vector<Graph> & g, const vector<VtxPair> & solution) {
 
     for (int ng = 1; ng < arguments.arg_num; ng++) {
         vector<bool> used_left(g[0].n, false);
@@ -341,7 +341,7 @@ bool check_sol(const vector<Graph> & g, const vector<VtxPair> & solution) {
     return true;
 }
 
-int calc_bound(const vector<Bidomain>& domains) {
+inline int calc_bound(const vector<Bidomain>& domains) {
     int bound = 0;
     for (const Bidomain &bd : domains) {
         bound += *min_element(bd.len, bd.len+arguments.arg_num);
@@ -349,7 +349,7 @@ int calc_bound(const vector<Bidomain>& domains) {
     return bound;
 }
 
-int find_min_value(const int *arr, const int start_idx, const int len) {
+inline int find_min_value(const int *arr, const int start_idx, const int len) {
     int min_v = INT_MAX;
     for (int i=0; i<len; i++)
         if (arr[start_idx + i] < min_v)
@@ -357,7 +357,7 @@ int find_min_value(const int *arr, const int start_idx, const int len) {
     return min_v;
 }
 
-int select_bidomain(const vector<Bidomain>& domains, const int* left,
+inline int select_bidomain(const vector<Bidomain>& domains, const int* left,
         const int current_matching_size) // da modificare
 {
     // Select the bidomain with the smallest max(leftsize, rightsize), breaking
@@ -402,7 +402,7 @@ int select_bidomain(const vector<Bidomain>& domains, const int* left,
 }
 
 // Returns length of left half of array
-int partition(int *all_vv, const int start, const int len, const vector<unsigned int> & adjrow) {
+inline int partition(int *all_vv, const int start, const int len, const vector<unsigned int> & adjrow) {
     int i=0;
     for (int j=0; j<len; j++) {
         if (adjrow[all_vv[start+j]]) {
@@ -413,7 +413,7 @@ int partition(int *all_vv, const int start, const int len, const vector<unsigned
     return i;
 }
 
-bool controlla_maggiore(const int *minori, const int *maggiori) {
+inline bool controlla_maggiore(const int *minori, const int *maggiori) {
     bool ret_val = true;
     for (int i = 0; i < arguments.arg_num; i++) {
         ret_val &= maggiori[i] > minori[i];
@@ -421,7 +421,7 @@ bool controlla_maggiore(const int *minori, const int *maggiori) {
     return ret_val;
 }
 
-unsigned int min_elem(const vector<unsigned int>& vet) {
+inline unsigned int min_elem(const vector<unsigned int>& vet) {
     unsigned int min = UINT_MAX;
     for (int i = 0; i < arguments.arg_num; i++) {
         if (vet[i] < min) {
@@ -431,7 +431,7 @@ unsigned int min_elem(const vector<unsigned int>& vet) {
     return min;
 }
 
-int max_elem(const vector<unsigned int>& vet) {
+inline int max_elem(const vector<unsigned int>& vet) {
     int max = 0;
     int counter = 0;
     for (int i = 0; i < arguments.arg_num; i++) {
@@ -450,7 +450,7 @@ int max_elem(const vector<unsigned int>& vet) {
 }
 
 // multiway is for directed and/or labelled graphs
-vector<Bidomain> filter_domains(const vector<Bidomain>& d, array<vector<int>, MAX_ARGS> &vv,
+inline vector<Bidomain> filter_domains(const vector<Bidomain>& d, array<vector<int>, MAX_ARGS> &vv,
     const vector<Graph>& g, const int *vertex, const bool multiway)
 {
     vector<Bidomain> new_d;
@@ -477,7 +477,8 @@ vector<Bidomain> filter_domains(const vector<Bidomain>& d, array<vector<int>, MA
             transform(len_edge, len_edge+arguments.arg_num, sets, new_d_sets, std::plus<>());
             new_d.emplace_back(Bidomain(new_d_sets, len_noedge, old_bd.is_adjacent));
         }
-        if (multiway && accumulate(len_edge, len_edge+arguments.arg_num, 1, multiplies<>{})) {
+        bool is_empty = accumulate(len_edge, len_edge+arguments.arg_num, 1, multiplies<>{});
+        if (multiway && is_empty) {
             vector<const vector<unsigned int> *> adjrows(arguments.arg_num);
             int top[MAX_ARGS];
             for (int i = 0; i < arguments.arg_num; i++) {
@@ -516,7 +517,7 @@ vector<Bidomain> filter_domains(const vector<Bidomain>& d, array<vector<int>, MA
                 }
             }
         }
-        else if (accumulate(len_edge, len_edge+arguments.arg_num, 1, multiplies<>{})) {
+        else if (is_empty) {
             new_d.emplace_back(Bidomain(sets, len_edge, true));
         }
     }
@@ -527,7 +528,7 @@ vector<Bidomain> filter_domains(const vector<Bidomain>& d, array<vector<int>, MA
 // Assumption: such a value exists
 // Assumption: arr contains no duplicates
 // Assumption: arr has no values==INT_MAX
-int index_of_next_smallest(const int *arr, const int start_idx, const int len, const int w) {
+inline int index_of_next_smallest(const int *arr, const int start_idx, const int len, const int w) {
     int idx = -1;
     int smallest = INT_MAX;
     for (int i=0; i<len; i++) {
@@ -539,7 +540,7 @@ int index_of_next_smallest(const int *arr, const int start_idx, const int len, c
     return idx;
 }
 
-void remove_vtx_from_domain(int *left, Bidomain& bd, int v, int idx)
+inline void remove_vtx_from_domain(int *left, Bidomain& bd, int v, int idx)
 {
     int i = 0;
     while(left[bd.sets[idx] + i] != v) i++;
@@ -547,12 +548,12 @@ void remove_vtx_from_domain(int *left, Bidomain& bd, int v, int idx)
     bd.len[idx]--;
 }
 
-void remove_bidomain(vector<Bidomain>& domains, const int idx) {
+inline void remove_bidomain(vector<Bidomain>& domains, const int idx) {
     domains[idx] = domains[domains.size()-1];
     domains.pop_back();
 }
 
-void solve_first_graph(array<vector<int>, MAX_ARGS>& vv,
+inline void solve_first_graph(array<vector<int>, MAX_ARGS>& vv,
     array<int, MAX_ARGS>& nodi_inseriti,
     const array<int, MAX_ARGS> order, Bidomain& bd)
 {
@@ -574,7 +575,7 @@ void solve_first_graph(array<vector<int>, MAX_ARGS>& vv,
     // abbiamo un nodo, esploriamo
 }
 
-bool solve_other_graphs(array<vector<int>, MAX_ARGS>& vv,
+inline bool solve_other_graphs(array<vector<int>, MAX_ARGS>& vv,
     const int pos, const Bidomain& bd,
     int& w)
 {
