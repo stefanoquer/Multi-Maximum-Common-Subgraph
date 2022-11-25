@@ -41,6 +41,7 @@ static void fail(const std::string& msg) {
 
 #define MAX_ARGS 10
 #define UNSORTED 0
+#define SORT_IN_SORTED 1
 
 /*******************************************************************************
                              Command-line arguments
@@ -636,11 +637,13 @@ void sorted_solve_nopar(const unsigned depth, vector<Graph> & g,
     array<int, MAX_ARGS> sorted_vv_idx = {};
     iota(sorted_vv_idx.begin(), sorted_vv_idx.begin() + MAX_ARGS, 0);
     //dobbiamo ordinare
+#if SORT_IN_SORTED
     stable_sort(sorted_vv_idx.begin(), sorted_vv_idx.begin() + arguments.arg_num,
         [&](const int& a, const int& b) {
             return (bd.len[a] < bd.len[b]);
         }
     );
+#endif
 
     array<int, MAX_ARGS> soluzione = {};
     for (int i = 0; i < MAX_ARGS; i++) {soluzione[i] = -1;}
@@ -721,11 +724,13 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
     array<int, MAX_ARGS> sorted_vv_idx = {};
     iota(sorted_vv_idx.begin(), sorted_vv_idx.begin() + MAX_ARGS, 0);
     //dobbiamo ordinare
+#if SORT_IN_SORTED
     stable_sort(sorted_vv_idx.begin(), sorted_vv_idx.begin() + arguments.arg_num,
         [&](const int& a, const int& b) {
             return (bd.len[a] < bd.len[b]);
         }
     );
+#endif
 
     array<int, MAX_ARGS> soluzione = {};
     for (int i = 0; i < MAX_ARGS; i++) { soluzione[i] = -1; }
