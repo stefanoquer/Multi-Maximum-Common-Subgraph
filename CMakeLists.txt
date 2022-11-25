@@ -15,7 +15,7 @@ endif()
 set(CMAKE_CXX_FLAGS "-Wall")
 #set(CMAKE_CXX_FLAGS_DEBUG "-g -fsanitize=address -fsanitize=undefined -fno-sanitize-recover=all -fsanitize=float-divide-by-zero -fsanitize=float-cast-overflow -fno-sanitize=null -fno-sanitize=alignment")
 set(CMAKE_CXX_FLAGS_DEBUG "-g")
-set(CMAKE_CXX_FLAGS_RELEASE "-Ofast -march=native -frename-registers")
+set(CMAKE_CXX_FLAGS_RELEASE "-Ofast -march=native -frename-registers -funroll-loops")
 
 add_executable(mcsp main.cpp App.cpp mcsp.cc graph.cc graph.hh)
 
