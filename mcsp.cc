@@ -318,7 +318,7 @@ inline bool check_sol(const vector<Graph> & g, const vector<VtxPair> & solution)
         vector<bool> used_left(g[0].n, false);
         vector<bool> used_right(g[ng].n, false);
 
-        for (int i = 0; i < arguments.arg_num; i++) {
+        for (size_t i = 0; i < solution.size(); i++) {
             const VtxPair p0 = solution[i];
 
             if (used_left[p0.vv[0]] || used_right[p0.vv[ng]])
@@ -330,7 +330,7 @@ inline bool check_sol(const vector<Graph> & g, const vector<VtxPair> & solution)
             if (g[0].label[p0.vv[0]] != g[ng].label[p0.vv[ng]])
                 return false;
 
-            for (int j = i + 1; j < arguments.arg_num; j++) {
+            for (size_t j = i + 1; j < solution.size(); j++) {
                 const VtxPair p1 = solution[j];
                 if (g[0].adjmat[p0.vv[0]][p1.vv[0]] != g[ng].adjmat[p0.vv[ng]][p1.vv[ng]])
                     return false;
@@ -613,9 +613,6 @@ void sorted_solve_nopar(const unsigned depth, vector<Graph> & g,
         string_show(current, depth);
     }
 
-    if (abort_due_to_timeout)
-        return;
-
     my_thread_nodes++;
 
     const unsigned int bound = current.size() + calc_bound(domains);
@@ -656,6 +653,8 @@ void sorted_solve_nopar(const unsigned depth, vector<Graph> & g,
             if (i == arguments.arg_num) {
                 current.emplace_back(VtxPair(soluzione.data()));
                 auto new_domains = filter_domains(domains, vv, g, soluzione.data(), arguments.directed || arguments.edge_labelled);
+                if (abort_due_to_timeout)
+                    return;
                 sorted_solve_nopar(depth + 1, g, global_incumbent, my_incumbent, current, new_domains, vv, matching_size_goal, my_thread_nodes);
                 i --;
                 current.pop_back();
@@ -702,8 +701,6 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
     if (arguments.verbose) {
         string_show(current, depth);
     }
-    if (abort_due_to_timeout)
-        return;
 
     my_thread_nodes++;
 
@@ -771,11 +768,15 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
                         help_current.emplace_back(VtxPair(help_soluzione.data()));
                         auto new_domains = filter_domains(help_domains, help_vv, g, help_soluzione.data(), arguments.directed || arguments.edge_labelled);
                         if (depth > split_levels) {
+                            if (abort_due_to_timeout)
+                                return;
                             sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(this_thread::get_id())->second, help_current, new_domains, help_vv, matching_size_goal, help_thread_nodes);
                         }
                         else {
                             auto new_position = position;
                             new_position.add(depth, ++global_position);
+                            if (abort_due_to_timeout)
+                                return;
                             sorted_solve(depth + 1, g, global_incumbent, per_thread_incumbents, help_current, new_domains, help_vv, matching_size_goal, new_position, help_me, help_thread_nodes);
                         }
                         i--;
@@ -838,11 +839,15 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
                         current.emplace_back(VtxPair(soluzione.data()));
                         auto new_domains = filter_domains(domains, vv, g, soluzione.data(), arguments.directed || arguments.edge_labelled);
                         if (depth > split_levels) {
+                            if (abort_due_to_timeout)
+                                return;
                             sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(this_thread::get_id())->second, current, new_domains, vv, matching_size_goal, my_thread_nodes);
                         }
                         else {
                             auto new_position = position;
                             new_position.add(depth, ++global_position);
+                            if (abort_due_to_timeout)
+                                return;
                             sorted_solve(depth + 1, g, global_incumbent, per_thread_incumbents, current, new_domains, vv, matching_size_goal, new_position, help_me, my_thread_nodes);
                         }
                         i--;
