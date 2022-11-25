@@ -701,7 +701,6 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
     }
 
     if (arguments.verbose) {
-        //show(current, domains, vv);
         string_show(current, depth);
     }
     if (abort_due_to_timeout)
@@ -757,23 +756,7 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
         array<vector<int>, MAX_ARGS> help_vv = vv;
         array<int, MAX_ARGS> help_soluzione = soluzione;
 
-        /* recalculate to this point */
-        /* rerun important stuff from before the loop */
-        //int bd_idx = select_bidomain(help_domains, help_vv[0].data(), help_current.size());
-        //if (bd_idx == -1)   // In the MCCS case, there may be nothing we can branch on
-        //    return;
         Bidomain& bd = help_domains[bd_idx];
-
-        //array<int, MAX_ARGS> sorted_vv_idx;
-        //iota(sorted_vv_idx.begin(), sorted_vv_idx.begin() + MAX_ARGS, 0);
-        //stable_sort(sorted_vv_idx.begin(), sorted_vv_idx.begin() + arguments.arg_num,
-        //    [&](const int& a, const int& b) {
-        //    return (bd.len[a] < bd.len[b]);
-        //}
-        //);
-
-        //gestiamo il primo grafo
-        //solve_first_graph(help_vv, help_soluzione, sorted_vv_idx, bd);
 
         int w0_index = 0; //mi chiedo se la prima w è già stata esplorata da qualcun altro
 
@@ -825,7 +808,6 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
 
         // adesso proviamo a proseguire senza prendere questo nodo (v)
         if (which_i_should_i_run_next == w0_index) {
-            //which_i_should_i_run_next = shared_i++;
             if (depth > split_levels) {
                 sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(this_thread::get_id())->second, help_current, help_domains, help_vv, matching_size_goal, help_thread_nodes);
             }
@@ -893,7 +875,6 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
 
         // adesso proviamo a proseguire senza prendere questo nodo (v)
         if (which_i_should_i_run_next == w0_index) {
-            //which_i_should_i_run_next = shared_i++;
             if (depth > split_levels) {
                 sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(this_thread::get_id())->second, current, domains, vv, matching_size_goal, my_thread_nodes);
             }
@@ -912,488 +893,6 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
         main_function(my_thread_nodes);
     }
 
-}
-
-// 1
-void solve_nopar(const unsigned depth, vector<Graph>& g,
-    AtomicIncumbent& global_incumbent,
-    vector<VtxPair>& my_incumbent,
-    vector<VtxPair>& current, vector<Bidomain>& domains,
-    array<vector<int>, MAX_ARGS>& vv, const unsigned int matching_size_goal,
-    unsigned long long& my_thread_nodes);
-// 2
-void solve(const unsigned depth, vector<Graph>& g,
-    AtomicIncumbent& global_incumbent,
-    PerThreadIncumbents& per_thread_incumbents,
-    vector<VtxPair>& current, vector<Bidomain>& domains,
-           array<vector<int>, MAX_ARGS>& vv, const unsigned int matching_size_goal,
-    const Position& position, HelpMe& help_me, unsigned long long& my_thread_nodes);
-
-// 3
-void solve_nopar_recursive(Bidomain& bd, array<vector<int>, MAX_ARGS>& vv, std::vector<Bidomain>& domains,
-    std::vector<Graph>& g, std::vector<VtxPair>& current, const unsigned int& depth,
-    AtomicIncumbent& global_incumbent, std::vector<VtxPair>& my_incumbent,
-    const unsigned int& matching_size_goal, unsigned long long& my_thread_nodes,
-    int bd_idx, int *nodi_inseriti, int n_nodi_inseriti)
-{
-    if (abort_due_to_timeout)
-        return;
-    int w = -1;
-    const int i_end = bd.len[n_nodi_inseriti] + 2; /* including the null */ //modificare
-
-    for (int i = 0; i < i_end /* not != */; i++) {
-        if (i != i_end - 1) {
-            int idx = index_of_next_smallest(vv[n_nodi_inseriti].data(), bd.sets[n_nodi_inseriti], bd.len[n_nodi_inseriti] + 1, w);
-            w = vv[n_nodi_inseriti][bd.sets[n_nodi_inseriti] + idx];
-            //remove_vtx_from_domain(vv[n_nodi_inseriti], domains[bd_idx], w, n_nodi_inseriti);
-
-            // swap w to the end of its colour class
-            vv[n_nodi_inseriti][bd.sets[n_nodi_inseriti] + idx] = vv[n_nodi_inseriti][bd.sets[n_nodi_inseriti] + bd.len[n_nodi_inseriti]];
-            vv[n_nodi_inseriti][bd.sets[n_nodi_inseriti] + bd.len[n_nodi_inseriti]] = w;
-
-            nodi_inseriti[n_nodi_inseriti] = w;
-
-            if (n_nodi_inseriti == arguments.arg_num - 1) {
-                auto new_domains = filter_domains(domains, vv, g, nodi_inseriti, arguments.directed || arguments.edge_labelled);
-                //auto new_domains = filter_domains(domains, vv[n_nodi_inseriti-1], vv[n_nodi_inseriti], g[n_nodi_inseriti-1], g[n_nodi_inseriti], nodi_inseriti.at(n_nodi_inseriti - 1), nodi_inseriti.at(n_nodi_inseriti), arguments.directed || arguments.edge_labelled, n_nodi_inseriti-1);
-                current.push_back(VtxPair(nodi_inseriti));
-                solve_nopar(depth + 1, g, global_incumbent, my_incumbent, current, new_domains, vv, matching_size_goal, my_thread_nodes);
-                current.pop_back();
-            }
-            else {
-                auto new_domains = domains;
-                auto &new_bd = new_domains[bd_idx];
-                solve_nopar_recursive(new_bd, vv, new_domains, g, current, depth, global_incumbent, my_incumbent, matching_size_goal, my_thread_nodes, bd_idx, nodi_inseriti, n_nodi_inseriti + 1);
-            }
-            //nodi_inseriti.pop_back();
-        }
-        else {
-            // Last assign is null. Keep it in the loop to simplify parallelism.
-            if (n_nodi_inseriti == 1) {
-                //Bidomain tmp = bd;
-                transform(bd.len + 1, bd.len+arguments.arg_num, bd.len + 1, [](int x) { return x + 1; });
-                //bd.len[n_nodi_inseriti]++;
-                if (bd.len[0] == 0)
-                    remove_bidomain(domains, bd_idx);
-
-                solve_nopar(depth + 1, g, global_incumbent, my_incumbent, current, domains, vv, matching_size_goal, my_thread_nodes); //attenzione potrebbe dover lanciare una funzione diversa
-            }
-        }
-    }
-}
-
-void solve_nopar(const unsigned depth, vector<Graph> & g, /*g0, g1*/
-        AtomicIncumbent & global_incumbent,
-        vector<VtxPair> & my_incumbent,
-        vector<VtxPair> & current, vector<Bidomain> & domains,
-        array<vector<int>, MAX_ARGS> &vv,
-        const unsigned int matching_size_goal,
-        unsigned long long & my_thread_nodes)
-{
-    if (arguments.verbose) {
-        //show(current, domains, vv);
-        string_show(current, depth);
-    }
-
-    if (abort_due_to_timeout)
-        return;
-
-    my_thread_nodes++;
-
-    if (my_incumbent.size() < current.size()) {
-        my_incumbent = current;
-        global_incumbent.update(current.size());
-    }
-
-    unsigned int bound = current.size() + calc_bound(domains);
-    if (bound <= global_incumbent.value || bound < matching_size_goal)
-        return;
-
-    if (arguments.big_first && global_incumbent.value == matching_size_goal)
-        return;
-
-    int bd_idx = select_bidomain(domains, vv[0].data(), current.size());
-    if (bd_idx == -1)   // In the MCCS case, there may be nothing we can branch on
-        return;
-    Bidomain &bd = domains[bd_idx];
-
-    transform(bd.len + 1, bd.len+arguments.arg_num, bd.len + 1, [](int x) { return x - 1; });
-    std::atomic<int> shared_i{ 0 };
-
-    int v = find_min_value(vv[0].data(), bd.sets[0], bd.len[0]);
-    remove_vtx_from_domain(vv[0].data(), domains[bd_idx], v, 0); //0 � inteso
-
-    int nodi_inseriti[MAX_ARGS];
-    nodi_inseriti[0] = v;
-
-    solve_nopar_recursive(bd, vv, domains, g, current, depth, global_incumbent, my_incumbent, matching_size_goal, my_thread_nodes, bd_idx, nodi_inseriti, 1);
-}
-
-// 4
-void help_solve_recursive(const int& i_end, array<vector<int>, MAX_ARGS>& help_vv, Bidomain& help_bd, int& which_i_should_i_run_next,
-                          std::atomic_int& shared_i, std::vector<Bidomain>& help_domains, std::vector<Graph>& g,
-                          std::vector<VtxPair>& help_current, const unsigned int& depth, AtomicIncumbent& global_incumbent,
-                          PerThreadIncumbents& per_thread_incumbents, const unsigned int& matching_size_goal,
-                          unsigned long long& help_thread_nodes, const Position& position, HelpMe& help_me,
-                          int help_bd_idx, int* nodi_inseriti, int n_nodi_inseriti)
-{
-    if (abort_due_to_timeout)
-        return;
-    int help_w = -1;
-
-    for (int i = 0; i < i_end /* not != */; i++) {
-        if (i != i_end - 1) {
-            int idx = index_of_next_smallest(help_vv[n_nodi_inseriti].data(), help_bd.sets[n_nodi_inseriti], help_bd.len[n_nodi_inseriti] + 1, help_w);
-            help_w = help_vv[n_nodi_inseriti][help_bd.sets[n_nodi_inseriti] + idx];
-            
-            // swap w to the end of its colour class
-            help_vv[n_nodi_inseriti][help_bd.sets[n_nodi_inseriti] + idx] = help_vv[n_nodi_inseriti][help_bd.sets[n_nodi_inseriti] + help_bd.len[n_nodi_inseriti]];
-            help_vv[n_nodi_inseriti][help_bd.sets[n_nodi_inseriti] + help_bd.len[n_nodi_inseriti]] = help_w;
-
-            nodi_inseriti[n_nodi_inseriti] = help_w;
-            if (n_nodi_inseriti == arguments.arg_num - 1) {
-                auto new_domains = filter_domains(help_domains, help_vv, g, nodi_inseriti, arguments.directed || arguments.edge_labelled);
-
-                help_current.push_back(VtxPair(nodi_inseriti));
-                if (depth > split_levels) {
-                    //solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, help_current, new_domains, help_vv, matching_size_goal, help_thread_nodes);
-                    sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, help_current, new_domains, help_vv, matching_size_goal, help_thread_nodes);
-                }
-                else {
-                    auto new_position = position;
-                    new_position.add(depth, ++global_position);
-                    solve(depth + 1, g, global_incumbent, per_thread_incumbents, help_current, new_domains, help_vv, matching_size_goal, new_position, help_me, help_thread_nodes);
-                }
-                help_current.pop_back();
-            }
-            else {
-                auto new_domains = help_domains;
-                const int i_end = help_bd.len[n_nodi_inseriti + 1] + 2;
-                auto& new_help_bd = new_domains[help_bd_idx];
-                help_solve_recursive(i_end, help_vv, new_help_bd, which_i_should_i_run_next, shared_i, new_domains, g,
-                                     help_current, depth, global_incumbent,
-                                     per_thread_incumbents, matching_size_goal, help_thread_nodes, position, help_me,
-                                     help_bd_idx, nodi_inseriti, n_nodi_inseriti + 1);
-            }
-        }
-        else {
-            // Last assign is null. Keep it in the loop to simplify parallelism.
-            if (n_nodi_inseriti == 1) {
-                transform(help_bd.len + 1, help_bd.len+arguments.arg_num, help_bd.len + 1, [](int x) { return x + 1; });
-                if (help_bd.len[0] == 0)
-                    remove_bidomain(help_domains, help_bd_idx);
-
-                if (depth > split_levels) {
-                    //solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, help_current, help_domains, help_vv, matching_size_goal, help_thread_nodes);
-                    sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, help_current, help_domains, help_vv, matching_size_goal, help_thread_nodes);
-                }
-                else {
-                    auto new_position = position;
-                    new_position.add(depth, ++global_position);
-                    solve(depth + 1, g, global_incumbent, per_thread_incumbents, help_current, help_domains, help_vv, matching_size_goal, new_position, help_me, help_thread_nodes);
-                }
-            }
-        }
-    }
-}
-
-// 5
-void solve_recursive(const int& i_end, array<vector<int>, MAX_ARGS>& vv, Bidomain& bd, int which_i_should_i_run_next,
-                     std::atomic_int& shared_i, std::vector<Bidomain>& domains, std::vector<Graph>& g,
-                     std::vector<VtxPair>& current, const unsigned int& depth, AtomicIncumbent& global_incumbent,
-                     PerThreadIncumbents& per_thread_incumbents, const unsigned int& matching_size_goal,
-                     unsigned long long& main_thread_nodes, const Position& position, HelpMe& help_me,
-                     int bd_idx, int* nodi_inseriti, int n_nodi_inseriti)
-{
-    if (abort_due_to_timeout)
-        return;
-    int w = -1;
-
-    for (int i = 0; i < i_end /* not != */; i++) {
-        if (i != i_end - 1) {
-            int idx = index_of_next_smallest(vv[n_nodi_inseriti].data(), bd.sets[n_nodi_inseriti], bd.len[n_nodi_inseriti] + 1, w);
-            w = vv[n_nodi_inseriti][bd.sets[n_nodi_inseriti] + idx];
-            
-            // swap w to the end of its colour class
-            vv[n_nodi_inseriti][bd.sets[n_nodi_inseriti] + idx] = vv[n_nodi_inseriti][bd.sets[n_nodi_inseriti] + bd.len[n_nodi_inseriti]];
-            vv[n_nodi_inseriti][bd.sets[n_nodi_inseriti] + bd.len[n_nodi_inseriti]] = w;
-
-            nodi_inseriti[n_nodi_inseriti] = w;
-            if (n_nodi_inseriti == arguments.arg_num - 1) {
-                auto new_domains = filter_domains(domains, vv, g, nodi_inseriti, arguments.directed || arguments.edge_labelled);
-                current.push_back(VtxPair(nodi_inseriti));
-                if (depth > split_levels) {
-                    //solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, current, new_domains, vv, matching_size_goal, main_thread_nodes);
-                    sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, current, new_domains, vv, matching_size_goal, main_thread_nodes);
-                }
-                else {
-                    auto new_position = position;
-                    new_position.add(depth, ++global_position);
-                    solve(depth + 1, g, global_incumbent, per_thread_incumbents, current, new_domains, vv, matching_size_goal, new_position, help_me, main_thread_nodes);
-                }
-                current.pop_back();
-            }
-            else {
-                auto new_domains = domains;
-                const int i_end = bd.len[n_nodi_inseriti + 1] + 2;
-                auto& new_bd = new_domains[bd_idx];
-                solve_recursive(i_end, vv, new_bd, which_i_should_i_run_next, shared_i, new_domains, g, current, depth,
-                                global_incumbent, per_thread_incumbents, matching_size_goal, main_thread_nodes,
-                                position, help_me, bd_idx, nodi_inseriti, n_nodi_inseriti + 1);
-            }
-        }
-        else {
-            // Last assign is null. Keep it in the loop to simplify parallelism.
-            if (n_nodi_inseriti == 1) {
-                Bidomain tmp = domains[bd_idx];
-                transform(bd.len + 1, bd.len+arguments.arg_num, bd.len + 1, [](int x) { return x + 1; });
-                if (bd.len[0] == 0)
-                    remove_bidomain(domains, bd_idx);
-
-
-                if (depth > split_levels) {
-                    //solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, current, domains, vv, matching_size_goal, main_thread_nodes);
-                    sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, current, domains, vv, matching_size_goal, main_thread_nodes);
-                }
-                else {
-                    auto new_position = position;
-                    new_position.add(depth, ++global_position);
-                    solve(depth + 1, g, global_incumbent, per_thread_incumbents, current, domains, vv, matching_size_goal, new_position, help_me, main_thread_nodes);
-                }
-            }
-
-        }
-    }
-}
-
-// 1
-void solve(const unsigned depth, vector<Graph> & g,
-        AtomicIncumbent & global_incumbent,
-        PerThreadIncumbents & per_thread_incumbents,
-        vector<VtxPair> & current, vector<Bidomain> & domains,
-        array<vector<int>, MAX_ARGS> & vv,
-        const unsigned int matching_size_goal,
-        const Position & position, HelpMe & help_me, unsigned long long & my_thread_nodes)
-{
-
-    if (arguments.verbose) {
-        //show(current, domains, vv);
-        string_show(current, depth);
-    }
-    if (abort_due_to_timeout)
-        return;
-
-    my_thread_nodes++;
-
-    if (per_thread_incumbents.find(std::this_thread::get_id())->second.size() < current.size()) {
-        per_thread_incumbents.find(std::this_thread::get_id())->second = current;
-        global_incumbent.update(current.size());
-    }
-
-    unsigned int bound = current.size() + calc_bound(domains);
-    if (bound <= global_incumbent.value || bound < matching_size_goal)
-        return;
-
-    if (arguments.big_first && global_incumbent.value == matching_size_goal)
-        return;
-
-    int bd_idx = select_bidomain(domains, vv[0].data(), current.size());
-    if (bd_idx == -1)   // In the MCCS case, there may be nothing we can branch on
-        return;
-    Bidomain &bd = domains[bd_idx];
-
-    transform(bd.len + 1, bd.len+arguments.arg_num, bd.len + 1, [](int x) { return x - 1; });
-    std::atomic<int> shared_i{ 0 };
-    const int i_end = bd.len[1] + 2; /* including the null */
-
-    array<vector<int>, MAX_ARGS> helper_vv;
-    for (int i=0; i<arguments.arg_num; i++) {
-        helper_vv[i].reserve(vv.size());
-        for (int j=0; j<vv[i].size(); j++) {
-            helper_vv[i].push_back(vv[i][j]);
-        }
-    }
-
-    // Version of the loop used by helpers
-    std::function<void (unsigned long long &)> helper_function = [&shared_i, &g, &global_incumbent, &per_thread_incumbents, &position, &depth,
-        i_end, matching_size_goal, current, domains, helper_vv, &help_me] (unsigned long long & help_thread_nodes) {
-        int which_i_should_i_run_next = shared_i++;
-
-        if (which_i_should_i_run_next >= i_end)
-            return; /* don't waste time recomputing */
-
-        /* recalculate to this point */
-        vector<VtxPair> help_current = current;
-        vector<Bidomain> help_domains = domains;
-        array<vector<int>, MAX_ARGS> help_vv;
-        for (int i=0; i<arguments.arg_num; i++) {
-            help_vv[i].reserve(helper_vv.size());
-            for (int j=0; j<helper_vv[i].size(); j++) {
-                help_vv[i].push_back(helper_vv[i][j]);
-            }
-        }
-
-        /* rerun important stuff from before the loop */
-        int help_bd_idx = select_bidomain(help_domains, help_vv[0].data(), help_current.size());
-        if (help_bd_idx == -1)   // In the MCCS case, there may be nothing we can branch on
-            return;
-        Bidomain &help_bd = help_domains[help_bd_idx];
-
-        int help_v = find_min_value(help_vv[0].data(), help_bd.sets[0], help_bd.len[0]);
-        remove_vtx_from_domain(help_vv[0].data(), help_domains[help_bd_idx], help_v, 0); //0 � inteso
-
-        int nodi_inseriti[MAX_ARGS];
-        nodi_inseriti[0] = help_v;
-        
-        int n_nodi_inseriti = 1;
-        int help_w = -1;
-
-        for (int i = 0; i < i_end /* not != */; i++) {
-            if (i != i_end - 1) {
-                int idx = index_of_next_smallest(help_vv[n_nodi_inseriti].data(), help_bd.sets[n_nodi_inseriti], help_bd.len[n_nodi_inseriti] + 1, help_w);
-                help_w = help_vv[n_nodi_inseriti][help_bd.sets[n_nodi_inseriti] + idx];
-                
-                // swap w to the end of its colour class
-                help_vv[n_nodi_inseriti][help_bd.sets[n_nodi_inseriti] + idx] = help_vv[n_nodi_inseriti][help_bd.sets[n_nodi_inseriti] + help_bd.len[n_nodi_inseriti]];
-                help_vv[n_nodi_inseriti][help_bd.sets[n_nodi_inseriti] + help_bd.len[n_nodi_inseriti]] = help_w;
-
-                if (i == which_i_should_i_run_next) {
-                    which_i_should_i_run_next = shared_i++;
-                    nodi_inseriti[n_nodi_inseriti] = help_w;
-                    if (n_nodi_inseriti == arguments.arg_num - 1) {
-                        auto new_domains = filter_domains(help_domains, help_vv, g, nodi_inseriti, arguments.directed || arguments.edge_labelled);
-                        
-                        help_current.push_back(VtxPair(nodi_inseriti));
-                        if (depth > split_levels) {
-                            //solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, help_current, new_domains, help_vv, matching_size_goal, help_thread_nodes);
-                            sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, help_current, new_domains, help_vv, matching_size_goal, help_thread_nodes);
-                        }
-                        else {
-                            auto new_position = position;
-                            new_position.add(depth, ++global_position);
-                            solve(depth + 1, g, global_incumbent, per_thread_incumbents, help_current, new_domains, help_vv, matching_size_goal, new_position, help_me, help_thread_nodes);
-                        }
-                        help_current.pop_back();
-                    }
-                    else {
-                        auto new_domains = help_domains;
-                        const int i_end = help_bd.len[n_nodi_inseriti + 1] + 2;
-                        auto &new_help_bd = new_domains[help_bd_idx];
-                        help_solve_recursive(i_end, help_vv, new_help_bd, which_i_should_i_run_next, shared_i,
-                                             new_domains, g, help_current, depth, global_incumbent,
-                                             per_thread_incumbents, matching_size_goal, help_thread_nodes, position,
-                                             help_me, help_bd_idx, nodi_inseriti, n_nodi_inseriti + 1);
-                    }
-                }
-            }
-            else {
-                // Last assign is null. Keep it in the loop to simplify parallelism.
-                if (n_nodi_inseriti == 1) {
-                    transform(help_bd.len + 1, help_bd.len+arguments.arg_num, help_bd.len + 1, [](int x) { return x + 1; });
-                    if (help_bd.len[0] == 0)
-                        remove_bidomain(help_domains, help_bd_idx);
-
-                    if (i == which_i_should_i_run_next) {
-                        which_i_should_i_run_next = shared_i++;
-                        if (depth > split_levels) {
-                            //solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, help_current, help_domains, help_vv, matching_size_goal, help_thread_nodes);
-                            sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, help_current, help_domains, help_vv, matching_size_goal, help_thread_nodes);
-                        }
-                        else {
-                            auto new_position = position;
-                            new_position.add(depth, ++global_position);
-                            solve(depth + 1, g, global_incumbent, per_thread_incumbents, help_current, help_domains, help_vv, matching_size_goal, new_position, help_me, help_thread_nodes);
-                        }
-                    }
-                }
-            }
-        }
-    };
-
-    // Grab this first, before advertising that we can get help
-    int which_i_should_i_run_next = shared_i++;
-
-    // Version of the loop used by the main thread
-    std::function<void (unsigned long long &)> main_function = [&] (unsigned long long & main_thread_nodes) {
-        int v = find_min_value(vv[0].data(), bd.sets[0], bd.len[0]);
-        remove_vtx_from_domain(vv[0].data(), domains[bd_idx], v, 0); //0 � inteso
-
-        int nodi_inseriti[MAX_ARGS];
-        nodi_inseriti[0] = v;
-        int n_nodi_inseriti = 1;
-
-        int w = -1;
-
-        for (int i = 0; i < i_end /* not != */; i++) {
-            if (i != i_end - 1) {
-                int idx = index_of_next_smallest(vv[n_nodi_inseriti].data(), bd.sets[n_nodi_inseriti], bd.len[n_nodi_inseriti] + 1, w);
-                w = vv[n_nodi_inseriti][bd.sets[n_nodi_inseriti] + idx];
-                //remove_vtx_from_domain(vv[n_nodi_inseriti], domains[bd_idx], w, n_nodi_inseriti);
-
-                // swap w to the end of its colour class
-                vv[n_nodi_inseriti][bd.sets[n_nodi_inseriti] + idx] = vv[n_nodi_inseriti][bd.sets[n_nodi_inseriti] + bd.len[n_nodi_inseriti]];
-                vv[n_nodi_inseriti][bd.sets[n_nodi_inseriti] + bd.len[n_nodi_inseriti]] = w;
-
-                if (i == which_i_should_i_run_next) {
-
-                    nodi_inseriti[n_nodi_inseriti] = w;
-                    which_i_should_i_run_next = shared_i++;
-                    if (n_nodi_inseriti == arguments.arg_num - 1) {
-                        auto new_domains = filter_domains(domains, vv, g, nodi_inseriti, arguments.directed || arguments.edge_labelled);
-                        
-                        current.push_back(VtxPair(nodi_inseriti));
-                        if (depth > split_levels) {
-                            //solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, current, new_domains, vv, matching_size_goal, main_thread_nodes);
-                            sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, current, new_domains, vv, matching_size_goal, main_thread_nodes);
-                        }
-                        else {
-                            auto new_position = position;
-                            new_position.add(depth, ++global_position);
-                            solve(depth + 1, g, global_incumbent, per_thread_incumbents, current, new_domains, vv, matching_size_goal, new_position, help_me, main_thread_nodes);
-                        }
-                        current.pop_back();
-                    }
-                    else {
-                        auto new_domains = domains;
-                        const int i_end = bd.len[n_nodi_inseriti + 1] + 2;
-                        auto &new_bd = new_domains[bd_idx];
-                        solve_recursive(i_end, vv, new_bd, which_i_should_i_run_next, shared_i, new_domains, g, current,
-                                        depth, global_incumbent, per_thread_incumbents, matching_size_goal,
-                                        main_thread_nodes, position, help_me, bd_idx, nodi_inseriti,
-                                        n_nodi_inseriti + 1);
-                    }
-                }
-            }
-            else {
-                // Last assign is null. Keep it in the loop to simplify parallelism.
-                if (n_nodi_inseriti == 1) {
-                    Bidomain tmp = domains[bd_idx];
-                    transform(bd.len + 1, bd.len+arguments.arg_num, bd.len + 1, [](int x) { return x + 1; });
-                    if (bd.len[0] == 0) //1 inteso
-                        remove_bidomain(domains, bd_idx);
-
-                    if (i == which_i_should_i_run_next) {
-                        which_i_should_i_run_next = shared_i++;
-                        if (depth > split_levels) {
-                            //solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, current, domains, vv, matching_size_goal, main_thread_nodes);
-                            sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, current, domains, vv, matching_size_goal, main_thread_nodes);
-                        }
-                        else {
-                            auto new_position = position;
-                            new_position.add(depth, ++global_position);
-                            solve(depth + 1, g, global_incumbent, per_thread_incumbents, current, domains, vv, matching_size_goal, new_position, help_me, main_thread_nodes);
-                        }
-                    }
-                }
-
-            }
-        }
-    };
-
-    if (depth <= split_levels)
-        help_me.get_help_with(position, main_function, helper_function, my_thread_nodes);
-    else
-        main_function(my_thread_nodes);
 }
 
 std::set<unsigned int> intersection(const vector<set<unsigned int>>& vecs) {
@@ -1453,7 +952,6 @@ std::pair<vector<VtxPair>, unsigned long long> mcs(vector<Graph> & gi) {
         for (int k=0; k<gi[0].n; k++) {
             unsigned int goal = gi[0].n - k;
             array<vector<int>, MAX_ARGS> vtx_buf_copy;
-            //vtx_buf_copy.resize(vtx_buf.size());
             for (int i=0; i<arguments.arg_num; i++) {
                 vtx_buf_copy[i].reserve(vtx_buf[i].size());
                 for (unsigned int j=0; j<vtx_buf[i].size(); j++) {
@@ -1468,11 +966,9 @@ std::pair<vector<VtxPair>, unsigned long long> mcs(vector<Graph> & gi) {
             HelpMe help_me(arguments.threads - 1);
             for (auto & t : help_me.threads)
                 per_thread_incumbents.emplace(t.get_id(), vector<VtxPair>());
-#if UNSORTED
-            solve(0, gi, global_incumbent, per_thread_incumbents, current, domains_copy, vtx_buf_copy, goal, position, help_me, global_nodes);
-#else
+
             sorted_solve(0, gi, global_incumbent, per_thread_incumbents, current, domains_copy, vtx_buf_copy, goal, position, help_me, global_nodes);
-#endif
+
             help_me.kill_workers();
             for (auto & n : help_me.nodes) {
                 global_nodes += n;
@@ -1492,11 +988,9 @@ std::pair<vector<VtxPair>, unsigned long long> mcs(vector<Graph> & gi) {
         HelpMe help_me(arguments.threads - 1);
         for (auto & t : help_me.threads)
             per_thread_incumbents.emplace(t.get_id(), vector<VtxPair>());
-#if UNSORTED
-        solve(0, gi, global_incumbent, per_thread_incumbents, current, domains, vtx_buf, 1, position, help_me, global_nodes);
-#else
+            
         sorted_solve(0, gi, global_incumbent, per_thread_incumbents, current, domains, vtx_buf, 1, position, help_me, global_nodes);
-#endif
+        
         help_me.kill_workers();
         for (auto & n : help_me.nodes)
             global_nodes += n;
