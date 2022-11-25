@@ -40,7 +40,6 @@ static void fail(const std::string& msg) {
 }
 
 #define MAX_ARGS 10
-#define UNSORTED 0
 #define SORT_IN_SORTED 1
 
 /*******************************************************************************
