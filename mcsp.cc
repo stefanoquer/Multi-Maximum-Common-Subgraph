@@ -41,6 +41,7 @@ static void fail(const std::string& msg) {
 
 #define MAX_ARGS 10
 #define SORTED 1
+#define OSCILLATING 1
 
 /*******************************************************************************
                              Command-line arguments
@@ -630,15 +631,36 @@ void sorted_solve_nopar(const unsigned depth, vector<Graph> & g,
 
     auto &bd = domains[bd_idx];
 
+#if SORTED
+#if OSCILLATING
+    array<int, MAX_ARGS> sorted_vv_idx = {};
+    array<int, MAX_ARGS> tmp_sorted_vv_idx = {};
+    iota(tmp_sorted_vv_idx.begin(), tmp_sorted_vv_idx.begin() + MAX_ARGS, 0);
+    //dobbiamo ordinare
+    stable_sort(tmp_sorted_vv_idx.begin(), tmp_sorted_vv_idx.begin() + arguments.arg_num,
+        [&](const int& a, const int& b) {
+            return (bd.len[a] < bd.len[b]);
+        }
+    );
+    for (int i = 0; i < arguments.arg_num; i = i + 2) {
+        sorted_vv_idx[i] = tmp_sorted_vv_idx[i / 2];
+    }
+    for (int i = 1; i < arguments.arg_num; i = i + 2) {
+        sorted_vv_idx[i] = tmp_sorted_vv_idx[arguments.arg_num - 1 - i / 2];
+    }
+#else
     array<int, MAX_ARGS> sorted_vv_idx = {};
     iota(sorted_vv_idx.begin(), sorted_vv_idx.begin() + MAX_ARGS, 0);
     //dobbiamo ordinare
-#if SORTED
     stable_sort(sorted_vv_idx.begin(), sorted_vv_idx.begin() + arguments.arg_num,
         [&](const int& a, const int& b) {
             return (bd.len[a] < bd.len[b]);
         }
     );
+#endif
+#else
+    array<int, MAX_ARGS> sorted_vv_idx = {};
+    iota(sorted_vv_idx.begin(), sorted_vv_idx.begin() + MAX_ARGS, 0);
 #endif
 
     array<int, MAX_ARGS> soluzione = {};
