@@ -638,7 +638,7 @@ void sorted_solve_nopar(const unsigned depth, vector<Graph> & g,
     iota(tmp_sorted_vv_idx.begin(), tmp_sorted_vv_idx.begin() + MAX_ARGS, 0);
     //dobbiamo ordinare
     stable_sort(tmp_sorted_vv_idx.begin(), tmp_sorted_vv_idx.begin() + arguments.arg_num,
-        [&](const int& a, const int& b) {
+        [&](const int a, const int b) {
             return (bd.len[a] < bd.len[b]);
         }
     );
@@ -653,7 +653,7 @@ void sorted_solve_nopar(const unsigned depth, vector<Graph> & g,
     iota(sorted_vv_idx.begin(), sorted_vv_idx.begin() + MAX_ARGS, 0);
     //dobbiamo ordinare
     stable_sort(sorted_vv_idx.begin(), sorted_vv_idx.begin() + arguments.arg_num,
-        [&](const int& a, const int& b) {
+        [&](const int a, const int b) {
             return (bd.len[a] < bd.len[b]);
         }
     );
@@ -663,7 +663,7 @@ void sorted_solve_nopar(const unsigned depth, vector<Graph> & g,
     iota(sorted_vv_idx.begin(), sorted_vv_idx.begin() + MAX_ARGS, 0);
     //dobbiamo ordinare
     stable_sort(sorted_vv_idx.begin(), sorted_vv_idx.begin() + arguments.arg_num,
-        [&](const int& a, const int& b) {
+        [&](const int a, const int b) {
             return (bd.len[a] >= bd.len[b]);
         }
     );
@@ -754,7 +754,7 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
     iota(tmp_sorted_vv_idx.begin(), tmp_sorted_vv_idx.begin() + MAX_ARGS, 0);
     //dobbiamo ordinare
     stable_sort(tmp_sorted_vv_idx.begin(), tmp_sorted_vv_idx.begin() + arguments.arg_num,
-        [&](const int& a, const int& b) {
+        [&](const int a, const int b) {
             return (bd.len[a] < bd.len[b]);
         }
     );
@@ -769,7 +769,7 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
     iota(sorted_vv_idx.begin(), sorted_vv_idx.begin() + MAX_ARGS, 0);
     //dobbiamo ordinare
     stable_sort(sorted_vv_idx.begin(), sorted_vv_idx.begin() + arguments.arg_num,
-        [&](const int& a, const int& b) {
+        [&](const int a, const int b) {
             return (bd.len[a] < bd.len[b]);
         }
     );
@@ -779,7 +779,7 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
     iota(sorted_vv_idx.begin(), sorted_vv_idx.begin() + MAX_ARGS, 0);
     //dobbiamo ordinare
     stable_sort(sorted_vv_idx.begin(), sorted_vv_idx.begin() + arguments.arg_num,
-        [&](const int& a, const int& b) {
+        [&](const int a, const int b) {
             return (bd.len[a] >= bd.len[b]);
         }
     );
