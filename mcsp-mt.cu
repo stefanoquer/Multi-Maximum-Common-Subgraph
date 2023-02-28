@@ -737,32 +737,32 @@ void pulisci_argomenti_v2(vector<Dati>& argomenti, vector<wrapperDati>& argoment
 	uint i;
 	uint pos_inserimento_args_i = 0;
 	
-	cout << "dichiarazioni" << endl;
+	//cout << "dichiarazioni" << endl;
 	
 	vector<Dati> args(0);
 	args.reserve(argomenti.size());
 	
-	cout << "dichiarazione args" << endl;
+	//cout << "dichiarazione args" << endl;
 	
-	cout << "bound inferiore: " << bound_inferiore << endl;
-	cout << "bound superiore: " << bound_superiore << endl << endl;
+	//cout << "bound inferiore: " << bound_inferiore << endl;
+	//cout << "bound superiore: " << bound_superiore << endl << endl;
 	
 	while (bound_inferiore != bound_superiore) {
 		i = (bound_inferiore + bound_superiore) / 2;
 		if (argomenti_i[i].bound_size <= inc_pos) {
 			bound_inferiore = i + 1;
-			cout << "bound inferiore: " << bound_inferiore << endl;
-			cout << "bound superiore: " << bound_superiore << endl << endl;
+			//cout << "bound inferiore: " << bound_inferiore << endl;
+			//cout << "bound superiore: " << bound_superiore << endl << endl;
 		}
 		else {
 			bound_superiore = i;
-			cout << "bound inferiore: " << bound_inferiore << endl;
-			cout << "bound superiore: " << bound_superiore << endl << endl;
+			//cout << "bound inferiore: " << bound_inferiore << endl;
+			//cout << "bound superiore: " << bound_superiore << endl << endl;
 		}
 	}
-	cout << "Siamo usciti dal while!" << endl;
+	//cout << "Siamo usciti dal while!" << endl;
 	
-	cout << argomenti_i[bound_inferiore].bound_size << " > " << argomenti_i[bound_inferiore - 1].bound_size << endl;
+	//cout << argomenti_i[bound_inferiore].bound_size << " > " << argomenti_i[bound_inferiore - 1].bound_size << endl;
 	
 	n_threads -= bound_inferiore;
 	
@@ -1962,12 +1962,12 @@ void nuova_print (vector<vector<GraphData>> &gd) {
 
 void GPU_produci_soluzione (vector<GraphData> &grafi, vector<GraphData> &sol, int indice) {
 
-	cout << "." << endl;
+	//cout << "." << endl;
 	Graph *g0 = &grafi.at(indice).g;
 	Graph *g1 = &grafi.at(grafi.size()-1-indice).g;
 	vector<int> g0_deg = calculate_degrees(*g0);
 	vector<int> g1_deg = calculate_degrees(*g1);
-	cout << ".." << endl;
+	//cout << ".." << endl;
 
 	// As implemented here, g1_dense and g0_dense are false for all instances
 	// in the Experimental Evaluation section of the paper.  Thus,
@@ -1981,20 +1981,20 @@ void GPU_produci_soluzione (vector<GraphData> &grafi, vector<GraphData> &sol, in
 	std::stable_sort(std::begin(vv0), std::end(vv0), [&](int a, int b) {
 		return g1_dense ? (g0_deg[a]<g0_deg[b]) : (g0_deg[a]>g0_deg[b]);
 	});
-	cout << "..." << endl;
+	//cout << "..." << endl;
 	vector<int> vv1(g1->n);
 	std::iota(std::begin(vv1), std::end(vv1), 0);
 	bool g0_dense = sum(g0_deg) > g0->n*(g0->n-1);
 	std::stable_sort(std::begin(vv1), std::end(vv1), [&](int a, int b) {
 		return g0_dense ? (g1_deg[a]<g1_deg[b]) : (g1_deg[a]>g1_deg[b]);
 	});
-	cout << "...." << endl;
+	//cout << "...." << endl;
 
 	struct Graph g0_sorted = induced_subgraph(*g0, vv0);
 	struct Graph g1_sorted = induced_subgraph(*g1, vv1);
 	
 	
-	cout << "....!" << endl;
+	//cout << "....!" << endl;
 	
 	n0 = g0->n;
 	n1 = g1->n;
@@ -2007,15 +2007,15 @@ void GPU_produci_soluzione (vector<GraphData> &grafi, vector<GraphData> &sol, in
             for (int j = 0; j < n1; j++)
                 adjmat1[i][j] = g1_sorted.adjmat[i][j];
     	
-    	cout << "funziona prima" << endl;
+    	//cout << "funziona prima" << endl;
     	
         checkCudaErrors(cudaDeviceReset());
     	
-    	cout << "funziona in mezzo" << endl;
+    	//cout << "funziona in mezzo" << endl;
     	
         move_graphs_to_gpu(&g0_sorted, &g0_sorted);
 	
-	cout << "funziona" << endl;
+	//cout << "funziona" << endl;
 	
 	std::pair<vector<VtxPair>, unsigned long long> solution = GPU_mcs(g0_sorted, g1_sorted);
 
@@ -2150,9 +2150,9 @@ int main(int argc, char** argv) {
         gi_data.at(j+1).resize(gi_data.at(j).size()/2 + gi_data.at(j).size()%2);
         
         for (unsigned int i = 0; i < (unsigned int)(gi_data.at(j).size()/2); i++) {
-        	cout << "ciclo " << j << "\tgrafo " << i << endl;
+        	//cout << "ciclo " << j << "\tgrafo " << i << endl;
             if (gi_data.at(j).size()/2 > 1 && i == 0) {
-            	cout << "GPU partita" << endl;
+            	//cout << "GPU partita" << endl;
                 t.emplace_back(std::thread([&gi_data, i, j] { GPU_produci_soluzione(gi_data.at(j), gi_data.at(j+1), i); } ));
             }
             else {
