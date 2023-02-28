@@ -2,7 +2,19 @@
     "cmake.debugConfig": {
         "cwd": "${workspaceFolder}/",
         "args": [
-            "min_max", "-t", "10", "/home/lire/Repo/benchmark-all/mcs10/bvg/b03/mcs10_b03_s100.B00", "/home/lire/Repo/benchmark-all/mcs10/bvg/b03/mcs10_b03_s100.B01", "/home/lire/Repo/benchmark-all/mcs10/bvg/b03/mcs10_b03_s100.B02"
+            "min_max",
+            "/home/cardone/utils/mcs-instances/mcs90/m4D/m4Dr2/mcs90_m4Dr2_s20.A00",
+            "/home/cardone/utils/mcs-instances/mcs90/m4D/m4Dr2/mcs90_m4Dr2_s20.B00",
+            "/home/cardone/utils/mcs-instances/mcs90/m4D/m4Dr2/mcs90_m4Dr2_s20.A01",
+            "/home/cardone/utils/mcs-instances/mcs90/m4D/m4Dr2/mcs90_m4Dr2_s20.B01",
+            "/home/cardone/utils/mcs-instances/mcs90/m4D/m4Dr2/mcs90_m4Dr2_s20.A02",
+            "/home/cardone/utils/mcs-instances/mcs90/m4D/m4Dr2/mcs90_m4Dr2_s20.B02",
+            "/home/cardone/utils/mcs-instances/mcs90/m4D/m4Dr2/mcs90_m4Dr2_s20.A03",
+            "/home/cardone/utils/mcs-instances/mcs90/m4D/m4Dr2/mcs90_m4Dr2_s20.B03",
+            "/home/cardone/utils/mcs-instances/mcs90/m4D/m4Dr2/mcs90_m4Dr2_s20.A04",
+            "/home/cardone/utils/mcs-instances/mcs90/m4D/m4Dr2/mcs90_m4Dr2_s20.B04",
+            "/home/cardone/utils/mcs-instances/mcs90/m4D/m4Dr2/mcs90_m4Dr2_s20.A05",
+            "/home/cardone/utils/mcs-instances/mcs90/m4D/m4Dr2/mcs90_m4Dr2_s20.B05",
         ],
         
     },
