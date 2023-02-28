@@ -544,6 +544,10 @@ void solve_nopar(const unsigned depth, const Graph & g0, const Graph & g1,
     if (abort_due_to_timeout)
         return;
 
+    //if(!check_sol(g0, g1, current)) {
+    //    cout << "???!?!?!?!???" << endl;
+    //}
+
 	//cout << "Thread: " << std::this_thread::get_id() << endl;
     my_thread_nodes++;
 
@@ -610,6 +614,11 @@ void solve(const unsigned depth, const Graph & g0, const Graph & g1,
 
     if (abort_due_to_timeout)
         return;
+
+    //if(!check_sol(g0, g1, current)) {
+    //    cout << "???!?!?!?!???" << endl;
+    //}
+
     my_thread_nodes++;
     if (per_thread_incumbents.find(std::this_thread::get_id())->second.size() < current.size()) {
         per_thread_incumbents.find(std::this_thread::get_id())->second = current;
