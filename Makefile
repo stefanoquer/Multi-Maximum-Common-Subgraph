@@ -1,8 +1,8 @@
-NVCC = /usr/local/cuda-11.6/bin/nvcc
+NVCC = /usr/local/cuda-11.7/bin/nvcc
 NVCCFLAGS = -arch=compute_86
 
 all:
-	$(NVCC) $(NVCCFLAGS) -O3 mcsp-mt.cu graph.cu -o mcsp
+	$(NVCC) $(NVCCFLAGS) -O2 mcsp-mt.cu graph.cu -o ./build/McSplit_Multigraph
 
 clean:
 	rm -f mcsp
