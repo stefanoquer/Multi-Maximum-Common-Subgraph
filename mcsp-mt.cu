@@ -578,10 +578,10 @@ void h_generate_next_domains(uchar domains[][BDS], uint *bd_pos, uint cur_pos,
 
 
 bool check_sol(Graph *g0, Graph *g1, uchar sol[][2], uint sol_len) {
-	bool *used_left = (bool*) calloc(g0->n, sizeof *used_left);
-	bool *used_right = (bool*) calloc(g1->n, sizeof *used_right);
+	//bool *used_left = (bool*) calloc(g0->n, sizeof *used_left);
+	//bool *used_right = (bool*) calloc(g1->n, sizeof *used_right);
 	for (int i = 0; i < sol_len; i++) {
-		if (used_left[sol[i][L]]) {
+		/*if (used_left[sol[i][L]]) {
 			printf("node %d of g0 used twice\n", used_left[sol[i][L]]);
 			return false;
 		}
@@ -590,7 +590,7 @@ bool check_sol(Graph *g0, Graph *g1, uchar sol[][2], uint sol_len) {
 			return false;
 		}
 		used_left[sol[i][L]] = true;
-		used_right[sol[i][R]] = true;
+		used_right[sol[i][R]] = true;*/
 		if (g0->label[sol[i][L]] != g1->label[sol[i][R]]) {
 			printf("g0:%d and g1:%d have different labels\n", sol[i][L],
 					sol[i][R]);
@@ -1186,7 +1186,7 @@ void compila_argomenti_globali (vector<Bidomain> & domini, uint bound_size, vect
 
 
 bool check_sol(const Graph & g0, const Graph & g1 , const vector<VtxPair> & solution) {
-    return true;
+    //return true;
     vector<bool> used_left(g0.n, false);
     vector<bool> used_right(g1.n, false);
     unsigned int sol_size = solution.size();
@@ -1921,6 +1921,8 @@ GraphData write_Graph(GraphData* g0, GraphData* g1, vector<VtxPair>& solution) {
     for (int i = 0; i < gd.g.n; i++) {
         for (unsigned int j = 0; j < sol_size; j++) {
             if (gd.map_g0.at(i) == solution.at(j).v) {
+                if (solution.at(j).w > 20)
+                    cout << solution.at(j).w << endl;
                 gd.map_g1.at(i) = solution.at(j).w;
             }
         }
@@ -1931,10 +1933,16 @@ GraphData write_Graph(GraphData* g0, GraphData* g1, vector<VtxPair>& solution) {
 
 void recursive_print (GraphData *gd, vector<int> &sol, int map) {
 	if(gd->g0 != nullptr) {
+        //cout << "map: " << map << endl;
+        if (gd->map_g0.at(map) > 20)
+            cout << "map_g0: " << gd->map_g0.at(map) << endl;
 		recursive_print(gd->g0, sol, gd->map_g0.at(map));
+        if (gd->map_g1.at(map) > 20)
+            cout << "map_g1: " << gd->map_g1.at(map) << endl;
 		recursive_print(gd->g1, sol, gd->map_g1.at(map));
 	}
 	else { //questo è uno dei grafi originali
+        //cout << "Ordine: " << gd->ordine << "/" << sol.size() << endl;
 		sol.at(gd->ordine) = map;
 	}
 }
@@ -1944,8 +1952,17 @@ void nuova_print (vector<vector<GraphData>> &gd) {
 	vector<int> sol(n_files);
 	GraphData *root = &gd.back().at(0);
 	
+    //cout << "Size: " << root->g.n << endl;
 	for (int i = 0; i < root->g.n; i++) {
+        //cout << "map_g0: " << root->map_g0.size() << endl;
+        //mafor (int j = 0; j < root->map_g0.size())
+        if (root->map_g0.at(i) > 20) 
+            cout << "map_g0: " << root->map_g0.at(i) << endl;
 		recursive_print(root->g0, sol, root->map_g0.at(i));
+        //cout << "g0 OK!" << endl;
+        //cout << "map_g1: " << root->map_g1.size() << endl;
+        if (root->map_g1.at(i) > 20)
+            cout << "map_g1: " << root->map_g1.at(i) << endl;
 		recursive_print(root->g1, sol, root->map_g1.at(i));
 		
 		cout << sol.at(0);
@@ -2000,20 +2017,20 @@ void GPU_produci_soluzione (vector<GraphData> &grafi, vector<GraphData> &sol, in
 	n1 = g1->n;
 	
 	for (int i = 0; i < n0; i++)
-            for (int j = 0; j < n0; j++)
-                adjmat0[i][j] = g0_sorted.adjmat[i][j];
+        for (int j = 0; j < n0; j++)
+            adjmat0[i][j] = g0_sorted.adjmat[i][j];
 
-        for (int i = 0; i < n1; i++)
-            for (int j = 0; j < n1; j++)
-                adjmat1[i][j] = g1_sorted.adjmat[i][j];
-    	
-    	//cout << "funziona prima" << endl;
-    	
-        checkCudaErrors(cudaDeviceReset());
-    	
-    	//cout << "funziona in mezzo" << endl;
-    	
-        move_graphs_to_gpu(&g0_sorted, &g0_sorted);
+    for (int i = 0; i < n1; i++)
+        for (int j = 0; j < n1; j++)
+            adjmat1[i][j] = g1_sorted.adjmat[i][j];
+    
+    //cout << "funziona prima" << endl;
+    
+    checkCudaErrors(cudaDeviceReset());
+    
+    //cout << "funziona in mezzo" << endl;
+    
+    move_graphs_to_gpu(&g0_sorted, &g0_sorted);
 	
 	//cout << "funziona" << endl;
 	
@@ -2021,9 +2038,22 @@ void GPU_produci_soluzione (vector<GraphData> &grafi, vector<GraphData> &sol, in
 
 	// Convert to indices from original, unsorted graphs
 	for (auto& vtx_pair : solution.first) {
+        if (vtx_pair.v >= 20 || vtx_pair.w >= 20) {
+            cout << "v: " << vtx_pair.v << endl;
+            cout << "w: " << vtx_pair.w << endl;
+        }
+        if (vv0[vtx_pair.v] >= 20 || vv1[vtx_pair.w] >= 20) {
+            cout << "v[" << vv0.size() << "]: " << vtx_pair.v << " -> " << vv0[vtx_pair.v] << endl;
+            cout << "w[" << vv1.size() << "]: " << vtx_pair.w << " -> " << vv1[vtx_pair.w] << endl;
+        }
 		vtx_pair.v = vv0[vtx_pair.v];
 		vtx_pair.w = vv1[vtx_pair.w];
 	}
+
+    if (!check_sol(*g0, *g1, solution.first)) {
+        cout << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << endl;
+    }
+
 	//cout << sol.size() << " - " << indice << endl;
 	sol.at(indice) = write_Graph(&grafi.at(indice), &grafi.at(grafi.size()-1-indice), solution.first);
 	//write_Graph(GraphData* g0, GraphData* g1, vector<VtxPair>& solution)
@@ -2072,6 +2102,11 @@ void produci_soluzione (vector<GraphData> &grafi, vector<GraphData> &sol, int in
 		vtx_pair.v = vv0[vtx_pair.v];
 		vtx_pair.w = vv1[vtx_pair.w];
 	}
+
+    if (!check_sol(*g0, *g1, solution.first)) {
+        cout << "??????????????????????????????????????" << endl;
+    }
+    //check_sol(const Graph & g0, const Graph & g1 , const vector<VtxPair> & solution)
 	//cout << sol.size() << " - " << indice << endl;
 	sol.at(indice) = write_Graph(&grafi.at(indice), &grafi.at(grafi.size()-1-indice), solution.first);
 	//write_Graph(GraphData* g0, GraphData* g1, vector<VtxPair>& solution)
