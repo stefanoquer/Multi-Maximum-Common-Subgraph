@@ -379,7 +379,7 @@ struct HelpMe
 std::atomic<int> indice_help_me(0);
 
 bool check_sol(const Graph & g0, const Graph & g1 , const vector<VtxPair> & solution) {
-    return true;
+    //return true;
     vector<bool> used_left(g0.n, false);
     vector<bool> used_right(g1.n, false);
     unsigned int sol_size = solution.size();
@@ -978,6 +978,12 @@ void produci_soluzione (vector<GraphData> &grafi, vector<GraphData> &sol, int in
 		vtx_pair.v = vv0[vtx_pair.v];
 		vtx_pair.w = vv1[vtx_pair.w];
 	}
+
+
+    if (!check_sol(*g0, *g1, solution.first)) {
+        cout << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << endl;
+    }
+
 	//cout << sol.size() << " - " << indice << endl;
 	sol.at(indice) = write_Graph(&grafi.at(g0_index), &grafi.at(g1_index), solution.first);
 	//write_Graph(GraphData* g0, GraphData* g1, vector<VtxPair>& solution)
