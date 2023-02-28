@@ -1384,85 +1384,70 @@ void GPU_solve(const unsigned depth, const Graph & g0, const Graph & g1,
     
 ///////////////////////////main function////////////////////
     int v = find_min_value(left, bd.l, bd.left_len);
-        remove_vtx_from_left_domain(left, domains[bd_idx], v);
-        int w = -1;
-        //std::cout << "main funtion - " << std::this_thread::get_id() << std::endl;
+    remove_vtx_from_left_domain(left, domains[bd_idx], v);
+    int w = -1;
+    //std::cout << "main funtion - " << std::this_thread::get_id() << std::endl;
 
-        for (int i = 0 ; i < i_end /* not != */ ; i++) {
-            if (i != i_end - 1) {
-                int idx = index_of_next_smallest(right, bd.r, bd.right_len+1, w);
-                w = right[bd.r + idx];
+    for (int i = 0 ; i < i_end /* not != */ ; i++) {
+        if (i != i_end - 1) {
+            int idx = index_of_next_smallest(right, bd.r, bd.right_len+1, w);
+            w = right[bd.r + idx];
 
-                // swap w to the end of its colour class
-                right[bd.r + idx] = right[bd.r + bd.right_len];
-                right[bd.r + bd.right_len] = w;
+            // swap w to the end of its colour class
+            right[bd.r + idx] = right[bd.r + bd.right_len];
+            right[bd.r + bd.right_len] = w;
 
-                //if (i == which_i_should_i_run_next) {
-                    //which_i_should_i_run_next = shared_i++;
-                    auto new_domains = filter_domains(domains, left, right, g0, g1, v, w,
-                            arguments.directed || arguments.edge_labelled);
-                    current.push_back(VtxPair(v, w));
-		    int bound = current.size() + calc_bound(domains);
-	            if(bound > global_incumbent.value) {
-		           if (current.size() > split_levels) {
-	                    	/*if(main_th_id == std::this_thread::get_id() && current.size() > split_levels) {*/
-	                    	    vector<uchar> char_left(left.size()), char_right(right.size());
-	                    	    for(int i = 0; i < left.size(); i++) {
-					char_left[i] = (uchar) left[i];
-				    }
-	                    	    for(int i = 0; i < right.size(); i++) {
-					char_right[i] = (uchar) right[i];
-				    }
-					//cout << "Current.size = " << +current.size() << endl;
-	                    	    compila_argomenti_globali (new_domains, bound, current, char_left, char_right, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second);/*
-	                    	}
-	                    	else {
-	                            solve_nopar(depth + 1, g0, g1, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, current, new_domains, left, right, matching_size_goal, main_thread_nodes);
-	                        }*/
-	                    }
-	                    else {
-	                        auto new_position = position;
-	                        new_position.add(depth, i + 1);
-	                        GPU_solve(depth + 1, g0, g1, global_incumbent, per_thread_incumbents, current, new_domains, left, right, matching_size_goal, new_position, my_thread_nodes/*main_thread_nodes*/);
-	                    }
-		    }
-                    current.pop_back();
-                //}
+            //if (i == which_i_should_i_run_next) {
+            //which_i_should_i_run_next = shared_i++;
+            auto new_domains = filter_domains(domains, left, right, g0, g1, v, w,
+                    arguments.directed || arguments.edge_labelled);
+            current.push_back(VtxPair(v, w));
+            int bound = current.size() + calc_bound(domains);
+            if(bound > global_incumbent.value) {
+                if (current.size() > split_levels) {
+                    vector<uchar> char_left(left.size()), char_right(right.size());
+                    for(int i = 0; i < left.size(); i++) {
+                        char_left[i] = (uchar) left[i];
+                    }
+                    for(int i = 0; i < right.size(); i++) {
+                        char_right[i] = (uchar) right[i];
+                    }
+                    compila_argomenti_globali (new_domains, bound, current, char_left, char_right, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second);
+                }
+                else {
+                    auto new_position = position;
+                    new_position.add(depth, i + 1);
+                    GPU_solve(depth + 1, g0, g1, global_incumbent, per_thread_incumbents, current, new_domains, left, right, matching_size_goal, new_position, my_thread_nodes/*main_thread_nodes*/);
+                }
             }
-            else {
-                // Last assign is null. Keep it in the loop to simplify parallelism.
-                bd.right_len++;
-                if (bd.left_len == 0)
-                    remove_bidomain(domains, bd_idx);
+            current.pop_back();
+        }
+        else {
+            // Last assign is null. Keep it in the loop to simplify parallelism.
+            bd.right_len++;
+            if (bd.left_len == 0)
+                remove_bidomain(domains, bd_idx);
 
-		int bound = current.size() + calc_bound(domains);
-                if (bound > global_incumbent.value) {
-                //if (i == which_i_should_i_run_next) {
-                    //which_i_should_i_run_next = shared_i++;
-                    if (current.size() > split_levels) {
-                    	/*if(main_th_id == std::this_thread::get_id()) {*/
-                    	    vector<uchar> char_left(left.size()), char_right(right.size());
-                    	    for(int i = 0; i < left.size(); i++) {
-				char_left[i] = (uchar) left[i];
-			    }
-                    	    for(int i = 0; i < right.size(); i++) {
-				char_right[i] = (uchar) right[i];
-			    }
-                    	    compila_argomenti_globali (domains, bound, current, char_left, char_right, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second);/*
-                    	}
-                    	else {
-                            solve_nopar(depth + 1, g0, g1, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, current, domains, left, right, matching_size_goal, main_thread_nodes);
-                        }*/
+            int bound = current.size() + calc_bound(domains);
+            if (bound > global_incumbent.value) {
+                if (current.size() > split_levels) {
+                    vector<uchar> char_left(left.size()), char_right(right.size());
+                    for(int i = 0; i < left.size(); i++) {
+                        char_left[i] = (uchar) left[i];
                     }
-                    else {
-                        auto new_position = position;
-                        new_position.add(depth, i + 1);
-                        GPU_solve(depth + 1, g0, g1, global_incumbent, per_thread_incumbents, current, domains, left, right, matching_size_goal, new_position, my_thread_nodes /*main_thread_nodes*/);
+                    for(int i = 0; i < right.size(); i++) {
+                        char_right[i] = (uchar) right[i];
                     }
-                //}
+                    compila_argomenti_globali (domains, bound, current, char_left, char_right, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second);
+                }
+                else {
+                    auto new_position = position;
+                    new_position.add(depth, i + 1);
+                    GPU_solve(depth + 1, g0, g1, global_incumbent, per_thread_incumbents, current, domains, left, right, matching_size_goal, new_position, my_thread_nodes /*main_thread_nodes*/);
                 }
             }
         }
+    }
 }
 
 
@@ -2030,7 +2015,7 @@ void GPU_produci_soluzione (vector<GraphData> &grafi, vector<GraphData> &sol, in
     
     //cout << "funziona in mezzo" << endl;
     
-    move_graphs_to_gpu(&g0_sorted, &g0_sorted);
+    move_graphs_to_gpu(&g0_sorted, &g1_sorted);
 	
 	//cout << "funziona" << endl;
 	
