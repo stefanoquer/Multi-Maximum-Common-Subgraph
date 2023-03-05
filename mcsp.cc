@@ -313,6 +313,29 @@ struct HelpMe
                                  MCS functions
 *******************************************************************************/
 
+void convert_and_print(const vector<Graph> & g, const vector<vector<int>> mappings, const vector<VtxPair> & solution) {
+    vector<VtxPair> converted_solution;
+    for (auto& vtx_pair : solution) {
+        converted_solution.emplace_back(vtx_pair);
+        for (int i = 0; i < arguments.arg_num; i++) {
+            converted_solution.back().vv[i] = mappings[i][vtx_pair.vv[i]];
+        }
+    }
+
+    cout << "Solution size " << converted_solution.size() << std::endl;
+    for (int i = 0; i < g[0].n; i++) {
+        for (auto f : converted_solution) {
+            if (f.vv[0] == i) {
+                cout << "(" << f.vv[0];
+                for (int k = 1; k < arguments.arg_num; k++) {
+                    cout << " -> " << f.vv[k];
+                }
+                cout << ") ";
+            }
+        }
+    }
+}
+
 inline bool check_sol(const vector<Graph> & g, const vector<VtxPair> & solution) {
 
     for (size_t i = 0; i < solution.size(); i++) {
@@ -591,8 +614,8 @@ void sorted_solve_nopar(const unsigned depth, vector<Graph> & g,
     const unsigned int matching_size_goal,
     unsigned long long & my_thread_nodes)
 {
-
-    if (my_incumbent.size() < current.size()) {
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    if (my_incumbent.size() <= current.size()) {
         my_incumbent = current;
         global_incumbent.update(current.size());
     }
@@ -605,7 +628,7 @@ void sorted_solve_nopar(const unsigned depth, vector<Graph> & g,
     my_thread_nodes++;
 
     const unsigned int bound = current.size() + calc_bound(domains);
-    if (bound <= global_incumbent.value || bound < matching_size_goal)
+    if (bound < global_incumbent.value || bound < matching_size_goal)
         return;
 
     if (arguments.big_first && global_incumbent.value == matching_size_goal)
