@@ -189,6 +189,30 @@ void string_show(const vector<VtxPair>& current, const int depth) {
     cout << s;
 }
 
+void convert_and_print(const vector<Graph> & g, const vector<vector<int>> mappings, const vector<VtxPair> & solution) {
+    vector<VtxPair> converted_solution;
+    for (auto& vtx_pair : solution) {
+        converted_solution.emplace_back(vtx_pair);
+        for (int i = 0; i < arguments.arg_num; i++) {
+            converted_solution.back().vv[i] = mappings[i][vtx_pair.vv[i]];
+        }
+    }
+
+    //cout << "Solution size " << converted_solution.size() << std::endl;
+    for (int i = 0; i < g[0].n; i++) {
+        for (auto f : converted_solution) {
+            if (f.vv[0] == i) {
+                cout << "(" << f.vv[0];
+                for (int k = 1; k < arguments.arg_num; k++) {
+                    cout << " -> " << f.vv[k];
+                }
+                cout << ") ";
+            }
+        }
+    }
+    cout << endl;
+}
+
 /*******************************************************************************
                                 Parallel queue
 *******************************************************************************/
@@ -312,29 +336,6 @@ struct HelpMe
 /*******************************************************************************
                                  MCS functions
 *******************************************************************************/
-
-void convert_and_print(const vector<Graph> & g, const vector<vector<int>> mappings, const vector<VtxPair> & solution) {
-    vector<VtxPair> converted_solution;
-    for (auto& vtx_pair : solution) {
-        converted_solution.emplace_back(vtx_pair);
-        for (int i = 0; i < arguments.arg_num; i++) {
-            converted_solution.back().vv[i] = mappings[i][vtx_pair.vv[i]];
-        }
-    }
-
-    cout << "Solution size " << converted_solution.size() << std::endl;
-    for (int i = 0; i < g[0].n; i++) {
-        for (auto f : converted_solution) {
-            if (f.vv[0] == i) {
-                cout << "(" << f.vv[0];
-                for (int k = 1; k < arguments.arg_num; k++) {
-                    cout << " -> " << f.vv[k];
-                }
-                cout << ") ";
-            }
-        }
-    }
-}
 
 inline bool check_sol(const vector<Graph> & g, const vector<VtxPair> & solution) {
 
@@ -612,12 +613,15 @@ void sorted_solve_nopar(const unsigned depth, vector<Graph> & g,
     vector<VtxPair> & current, vector<Bidomain> & domains,
     array<vector<int>, MAX_ARGS> &vv,
     const unsigned int matching_size_goal,
-    unsigned long long & my_thread_nodes)
+    unsigned long long & my_thread_nodes,
+    const vector<vector<int>> mappings)
 {
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     if (my_incumbent.size() <= current.size()) {
-        my_incumbent = current;
-        global_incumbent.update(current.size());
+        convert_and_print(g, mappings, current);
+        if (my_incumbent.size() < current.size()) {
+            my_incumbent = current;
+            global_incumbent.update(current.size());
+        }
     }
 
     if (arguments.verbose) {
@@ -697,7 +701,7 @@ void sorted_solve_nopar(const unsigned depth, vector<Graph> & g,
                 auto new_domains = filter_domains(domains, vv, g, soluzione.data(), arguments.directed || arguments.edge_labelled);
                 if (abort_due_to_timeout)
                     return;
-                sorted_solve_nopar(depth + 1, g, global_incumbent, my_incumbent, current, new_domains, vv, matching_size_goal, my_thread_nodes);
+                sorted_solve_nopar(depth + 1, g, global_incumbent, my_incumbent, current, new_domains, vv, matching_size_goal, my_thread_nodes, mappings);
                 i --;
                 current.pop_back();
             }
@@ -721,7 +725,7 @@ void sorted_solve_nopar(const unsigned depth, vector<Graph> & g,
     }
     
     // adesso proviamo a proseguire senza prendere questo nodo (v)
-    sorted_solve_nopar(depth + 1, g, global_incumbent, my_incumbent, current, domains, vv, matching_size_goal, my_thread_nodes);
+    sorted_solve_nopar(depth + 1, g, global_incumbent, my_incumbent, current, domains, vv, matching_size_goal, my_thread_nodes, mappings);
 }
 
 void sorted_solve(const unsigned depth, vector<Graph>& g,
@@ -731,13 +735,17 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
     array<vector<int>, MAX_ARGS>& vv,
     const unsigned int matching_size_goal,
     const Position& position, HelpMe& help_me,
-    unsigned long long& my_thread_nodes)
+    unsigned long long& my_thread_nodes,
+    const vector<vector<int>> mappings)
 {
 
 
-    if (per_thread_incumbents.find(std::this_thread::get_id())->second.size() < current.size()) {
-        per_thread_incumbents.find(std::this_thread::get_id())->second = current;
-        global_incumbent.update(current.size());
+    if (per_thread_incumbents.find(std::this_thread::get_id())->second.size() <= current.size()) {
+        convert_and_print(g, mappings, current);
+        if (per_thread_incumbents.find(std::this_thread::get_id())->second.size() < current.size()) {
+            per_thread_incumbents.find(std::this_thread::get_id())->second = current;
+            global_incumbent.update(current.size());
+        }
     }
 
     if (arguments.verbose) {
@@ -747,7 +755,7 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
     my_thread_nodes++;
 
     const unsigned int bound = current.size() + calc_bound(domains);
-    if (bound <= global_incumbent.value || bound < matching_size_goal)
+    if (bound < global_incumbent.value || bound < matching_size_goal)
         return;
 
     if (arguments.big_first && global_incumbent.value == matching_size_goal)
@@ -810,7 +818,7 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
     // Version of the loop used by helpers
     const std::function<void(unsigned long long&)> helper_function =
         [&shared_i, &g, &global_incumbent, &per_thread_incumbents, &position,
-        &depth, i_end, matching_size_goal, &help_me, current, domains, vv, bd_idx, sorted_vv_idx, soluzione]
+        &depth, i_end, matching_size_goal, &help_me, current, domains, vv, bd_idx, sorted_vv_idx, soluzione, &mappings]
         (unsigned long long& help_thread_nodes) 
     {
 
@@ -842,14 +850,14 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
                         if (depth > split_levels) {
                             if (abort_due_to_timeout)
                                 return;
-                            sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(this_thread::get_id())->second, help_current, new_domains, help_vv, matching_size_goal, help_thread_nodes);
+                            sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(this_thread::get_id())->second, help_current, new_domains, help_vv, matching_size_goal, help_thread_nodes, mappings);
                         }
                         else {
                             auto new_position = position;
                             new_position.add(depth, ++global_position);
                             if (abort_due_to_timeout)
                                 return;
-                            sorted_solve(depth + 1, g, global_incumbent, per_thread_incumbents, help_current, new_domains, help_vv, matching_size_goal, new_position, help_me, help_thread_nodes);
+                            sorted_solve(depth + 1, g, global_incumbent, per_thread_incumbents, help_current, new_domains, help_vv, matching_size_goal, new_position, help_me, help_thread_nodes, mappings);
                         }
                         i--;
                         help_current.pop_back();
@@ -881,12 +889,12 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
         // adesso proviamo a proseguire senza prendere questo nodo (v)
         if (which_i_should_i_run_next == w0_index) {
             if (depth > split_levels) {
-                sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(this_thread::get_id())->second, help_current, help_domains, help_vv, matching_size_goal, help_thread_nodes);
+                sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(this_thread::get_id())->second, help_current, help_domains, help_vv, matching_size_goal, help_thread_nodes, mappings);
             }
             else {
                 auto new_position = position;
                 new_position.add(depth, ++global_position);
-                sorted_solve(depth + 1, g, global_incumbent, per_thread_incumbents, help_current, help_domains, help_vv, matching_size_goal, new_position, help_me, help_thread_nodes);
+                sorted_solve(depth + 1, g, global_incumbent, per_thread_incumbents, help_current, help_domains, help_vv, matching_size_goal, new_position, help_me, help_thread_nodes, mappings);
             }
         }
 
@@ -913,14 +921,14 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
                         if (depth > split_levels) {
                             if (abort_due_to_timeout)
                                 return;
-                            sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(this_thread::get_id())->second, current, new_domains, vv, matching_size_goal, my_thread_nodes);
+                            sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(this_thread::get_id())->second, current, new_domains, vv, matching_size_goal, my_thread_nodes, mappings);
                         }
                         else {
                             auto new_position = position;
                             new_position.add(depth, ++global_position);
                             if (abort_due_to_timeout)
                                 return;
-                            sorted_solve(depth + 1, g, global_incumbent, per_thread_incumbents, current, new_domains, vv, matching_size_goal, new_position, help_me, my_thread_nodes);
+                            sorted_solve(depth + 1, g, global_incumbent, per_thread_incumbents, current, new_domains, vv, matching_size_goal, new_position, help_me, my_thread_nodes, mappings);
                         }
                         i--;
                         current.pop_back();
@@ -952,12 +960,12 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
         // adesso proviamo a proseguire senza prendere questo nodo (v)
         if (which_i_should_i_run_next == w0_index) {
             if (depth > split_levels) {
-                sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(this_thread::get_id())->second, current, domains, vv, matching_size_goal, my_thread_nodes);
+                sorted_solve_nopar(depth + 1, g, global_incumbent, per_thread_incumbents.find(this_thread::get_id())->second, current, domains, vv, matching_size_goal, my_thread_nodes, mappings);
             }
             else {
                 auto new_position = position;
                 new_position.add(depth, ++global_position);
-                sorted_solve(depth + 1, g, global_incumbent, per_thread_incumbents, current, domains, vv, matching_size_goal, new_position, help_me, my_thread_nodes);
+                sorted_solve(depth + 1, g, global_incumbent, per_thread_incumbents, current, domains, vv, matching_size_goal, new_position, help_me, my_thread_nodes, mappings);
             }
         }
     };
@@ -986,7 +994,7 @@ std::set<unsigned int> intersection(const vector<set<unsigned int>>& vecs) {
     return last_intersection;
 }
 
-std::pair<vector<VtxPair>, unsigned long long> mcs(vector<Graph> & gi) {
+std::pair<vector<VtxPair>, unsigned long long> mcs(vector<Graph> & gi, vector<vector<int>> mappings) {
     
     // the buffer of vertex indices for the partitions
     array<vector<int>, MAX_ARGS> vtx_buf;
@@ -1043,7 +1051,7 @@ std::pair<vector<VtxPair>, unsigned long long> mcs(vector<Graph> & gi) {
             for (auto & t : help_me.threads)
                 per_thread_incumbents.emplace(t.get_id(), vector<VtxPair>());
 
-            sorted_solve(0, gi, global_incumbent, per_thread_incumbents, current, domains_copy, vtx_buf_copy, goal, position, help_me, global_nodes);
+            sorted_solve(0, gi, global_incumbent, per_thread_incumbents, current, domains_copy, vtx_buf_copy, goal, position, help_me, global_nodes, mappings);
 
             help_me.kill_workers();
             for (auto & n : help_me.nodes) {
@@ -1065,7 +1073,7 @@ std::pair<vector<VtxPair>, unsigned long long> mcs(vector<Graph> & gi) {
         for (auto & t : help_me.threads)
             per_thread_incumbents.emplace(t.get_id(), vector<VtxPair>());
             
-        sorted_solve(0, gi, global_incumbent, per_thread_incumbents, current, domains, vtx_buf, 1, position, help_me, global_nodes);
+        sorted_solve(0, gi, global_incumbent, per_thread_incumbents, current, domains, vtx_buf, 1, position, help_me, global_nodes, mappings);
         
         help_me.kill_workers();
         for (auto & n : help_me.nodes)
@@ -1160,7 +1168,7 @@ void mcsp::start(const args &arg) {
         gi_sorted.emplace_back(induced_subgraph(gi[i], vvi[i]));
     }
 
-    std::pair<vector<VtxPair>, unsigned long long> solution = mcs(gi_sorted);
+    std::pair<vector<VtxPair>, unsigned long long> solution = mcs(gi_sorted, vvi);
 
     // Convert to indices from original, unsorted graphs
     for (auto& vtx_pair : solution.first) {
