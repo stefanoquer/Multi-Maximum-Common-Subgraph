@@ -20,9 +20,16 @@ Graph::Graph(unsigned int n) {
     label.resize(n, 0u);
     adjmat.resize(n, std::vector<unsigned int>(n, false));
 }
+Graph::Graph(unsigned int n, const std::string graph_name) {
+    this->n = n;
+    label.resize(n, 0u);
+    adjmat.resize(n, std::vector<unsigned int>(n, false));
+    this->name = graph_name;
+}
 
 Graph induced_subgraph(struct Graph& g, std::vector<int> vv) {
-    Graph subg(vv.size());
+    //cout << "g: " << g.name << endl;
+    Graph subg(vv.size(), g.name);
     for (int i=0; i<subg.n; i++)
         for (int j=0; j<subg.n; j++)
             subg.adjmat[i][j] = g.adjmat[vv[i]][vv[j]];
@@ -49,7 +56,7 @@ void add_edge(Graph& g, int v, int w, bool directed=false, unsigned int val=1) {
 }
 
 struct Graph readDimacsGraph(std::string filename, bool directed, bool vertex_labelled) {
-    struct Graph g(0);
+    struct Graph g(0, filename);
 
 
     ifstream f(filename);
@@ -72,7 +79,7 @@ struct Graph readDimacsGraph(std::string filename, bool directed, bool vertex_la
             case 'p':
                 if (sscanf(line.c_str(), "p edge %d %d", &nvertices, &medges)!=2)
                     fail("Error reading a line beginning with p.\n");
-                g = Graph(nvertices);
+                g = Graph(nvertices, filename);
                 break;
             case 'e':
                 if (sscanf(line.c_str(), "e %d %d", &v, &w)!=2)
@@ -97,7 +104,9 @@ struct Graph readDimacsGraph(std::string filename, bool directed, bool vertex_la
 }
 
 struct Graph readLadGraph(std::string filename, bool directed) {
-    struct Graph g(0);
+    //cout << "g: " << filename << endl;
+    struct Graph g(0, filename);
+    //cout << "g: " << g.name << endl;
     FILE* f;
     
     if ((f=fopen(filename.c_str(), "r"))==NULL)
@@ -108,7 +117,7 @@ struct Graph readLadGraph(std::string filename, bool directed) {
 
     if (fscanf(f, "%d", &nvertices) != 1)
         fail("Number of vertices not read correctly.\n");
-    g = Graph(nvertices);
+    g = Graph(nvertices, filename);
 
     for (int i=0; i<nvertices; i++) {
         int edge_count;
@@ -142,7 +151,7 @@ struct Graph readBinaryGraph(std::string filename, bool directed, bool edge_labe
         fail("Cannot open file");
 
     int nvertices = read_word(f);
-    g = Graph(nvertices);
+    g = Graph(nvertices, filename);
 
     // Labelling scheme: see
     // https://github.com/ciaranm/cp2016-max-common-connected-subgraph-paper/blob/master/code/solve_max_common_subgraph.cc
@@ -188,7 +197,7 @@ struct Graph read_bin_graph(const std::string filename, bool directed, bool edge
   if ((f = fopen(filename.c_str(), "rb")) == NULL) fail("Cannot open file");
 
   int nvertices = custom_read_word(f);
-  g = Graph(nvertices);
+  g = Graph(nvertices, filename);
 
   // Labelling scheme: see
   // https://github.com/ciaranm/cp2016-max-common-connected-subgraph-paper/blob/master/code/solve_max_common_subgraph.cc
@@ -229,7 +238,7 @@ Graph read_ioi_graph(const std::string filename, bool directed,
 
   fscanf(f, "%d %d", &n, &m);
 
-  Graph g(n);
+  Graph g(n, filename);
 
   for (int i = 0; i < n; i++) {
     int label;
@@ -248,12 +257,13 @@ Graph read_ioi_graph(const std::string filename, bool directed,
 }
 
 struct Graph readGraph(std::string filename, char format, bool directed, bool edge_labelled, bool vertex_labelled) {
-    struct Graph g(0);
+    struct Graph g(0, filename);
     if (format=='D') g = readDimacsGraph(filename, directed, vertex_labelled);
     else if (format=='L') g = readLadGraph(filename, directed);
     else if (format=='B') g = readBinaryGraph(filename, directed, edge_labelled, vertex_labelled);
     else if (format=='E') g = read_bin_graph(filename, directed, edge_labelled, vertex_labelled);
     else if (format=='I') g = read_ioi_graph(filename, directed, vertex_labelled);
     else fail("Unknown graph format\n");
+    //cout << "g: " << g.name;
     return g;
 }

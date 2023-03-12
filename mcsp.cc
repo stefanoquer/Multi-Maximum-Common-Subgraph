@@ -199,16 +199,14 @@ void convert_and_print(const vector<Graph> & g, const vector<vector<int>> mappin
     }
 
     //cout << "Solution size " << converted_solution.size() << std::endl;
-    for (int i = 0; i < g[0].n; i++) {
-        for (auto f : converted_solution) {
-            if (f.vv[0] == i) {
-                cout << "(" << f.vv[0];
-                for (int k = 1; k < arguments.arg_num; k++) {
-                    cout << " -> " << f.vv[k];
-                }
-                cout << ") ";
+    for (auto f : converted_solution) {
+        //if (f.vv[0] == i) {
+            cout << "(" << f.vv[0];
+            for (int k = 1; k < arguments.arg_num; k++) {
+                cout << " -> " << f.vv[k];
             }
-        }
+            cout << ") ";
+        //}
     }
     cout << endl;
 }
@@ -1051,6 +1049,25 @@ std::pair<vector<VtxPair>, unsigned long long> mcs(vector<Graph> & gi, vector<ve
             for (auto & t : help_me.threads)
                 per_thread_incumbents.emplace(t.get_id(), vector<VtxPair>());
 
+            for (auto &g : gi) {
+                cout << g.name << (&g != &gi.back()) ? " -> " : "\n";
+            }
+            cout << "printing mappings: " << mappings.size() << "x" << mappings[0].size() << endl;
+            for (auto &map : mappings) {
+                for (auto val : map) {
+                    cout << val << ((val == map.back()) ? "\n" : ", ");
+                }
+            }
+            cout << "printing graphs: " << mappings.size() << "x" << mappings[0].size() << endl;
+            int tmp = 0;
+            for (auto &g : gi) {
+                cout << "G" << tmp++ << ":" << endl;
+                for (auto row : g.adjmat) {
+                    for (auto column : row) {
+                        cout << column << ((column == row.back()) ? "\n" : " ");
+                    }
+                }
+            }
             sorted_solve(0, gi, global_incumbent, per_thread_incumbents, current, domains_copy, vtx_buf_copy, goal, position, help_me, global_nodes, mappings);
 
             help_me.kill_workers();
@@ -1073,6 +1090,25 @@ std::pair<vector<VtxPair>, unsigned long long> mcs(vector<Graph> & gi, vector<ve
         for (auto & t : help_me.threads)
             per_thread_incumbents.emplace(t.get_id(), vector<VtxPair>());
             
+        for (auto &g : gi) {
+            cout << g.name << ((&g != &gi.back()) ? string(" -> ") : string("\n"));
+        }
+        cout << "printing mappings: " << mappings.size() << "x" << mappings[0].size() << endl;
+        for (auto &map : mappings) {
+            for (auto val : map) {
+                cout << val << ((val == map.back()) ? "\n" : ", ");
+            }
+        }
+        cout << "printing graphs: " << mappings.size() << "x" << mappings[0].size() << endl;
+        int tmp = 0;
+        for (auto &g : gi) {
+            cout << "G" << tmp++ << ":" << endl;
+            for (auto &row : g.adjmat) {
+                for (auto &column : row) {
+                    cout << column << ((&column == &row.back()) ? "\n" : " ");
+                }
+            }
+        }
         sorted_solve(0, gi, global_incumbent, per_thread_incumbents, current, domains, vtx_buf, 1, position, help_me, global_nodes, mappings);
         
         help_me.kill_workers();

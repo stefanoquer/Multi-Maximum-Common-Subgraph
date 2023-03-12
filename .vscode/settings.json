@@ -2,19 +2,17 @@
     "cmake.debugConfig": {
         "args": [
             //"-v",
-            "-t", "10",
+            //"-t", "10",
             "-T", "1",
             "--min_max",
-            "--bin",
-            "/home/cardone/utils/mcs-instances/mcs30/rand/r01/mcs30_r01_s10.A00",
-            "/home/cardone/utils/mcs-instances/mcs30/rand/r01/mcs30_r01_s10.B00",
-            "/home/cardone/utils/mcs-instances/mcs30/rand/r01/mcs30_r01_s10.A01",
-            "/home/cardone/utils/mcs-instances/mcs30/rand/r01/mcs30_r01_s10.B01",
-            "/home/cardone/utils/mcs-instances/mcs30/rand/r01/mcs30_r01_s10.A02",
-            "/home/cardone/utils/mcs-instances/mcs30/rand/r01/mcs30_r01_s10.B02",
-            "/home/cardone/utils/mcs-instances/mcs30/rand/r01/mcs30_r01_s10.A03",
-            "/home/cardone/utils/mcs-instances/mcs30/rand/r01/mcs30_r01_s10.B03",
-            //"/home/cardone/utils/mcs-instances/mcs10/rand/r01/mcs10_r01_s20.A02"
+            "--ladder",
+            //"/mnt/c/Users/lorca/source/repos/mcs-instances/tests/MDPI_2023_G1.txt",
+            //"/mnt/c/Users/lorca/source/repos/mcs-instances/tests/MDPI_2023_G2.txt",
+            "/mnt/c/Users/lorca/source/repos/mcs-instances/tests/MDPI_2023_G3.txt",
+            "/mnt/c/Users/lorca/source/repos/mcs-instances/tests/MDPI_2023_G4.txt",
+            //"--bin",
+            //"/mnt/c/Users/lorca/source/repos/mcs-instances/mcs30/rand/r01/mcs30_r01_s10.A00",
+            //"/mnt/c/Users/lorca/source/repos/mcs-instances/mcs30/rand/r01/mcs30_r01_s10.A01",
             //"--dimacs", "-v",
             //"/home/cardone/utils/mcs-instances/g_010.dimacs",
             //"/home/cardone/utils/mcs-instances/h_010.dimacs"
