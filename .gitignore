@@ -355,3 +355,6 @@ mcsp
 *.sln
 *.vcxproj
 *.filters
+
+# Custom
+.vscode/settings.json
