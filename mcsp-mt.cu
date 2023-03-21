@@ -60,7 +60,7 @@ static struct argp_option options[] = {
     {"big-first", 'b', 0, 0, "First try to find an induced subgraph isomorphism, then decrement the target size"},
     {"timeout", 't', "timeout", 0, "Specify a timeout (seconds)"},
     {"threads", 'T', "threads", 0, "Specify how many threads to use"},
-    { "debug", 'D', 0, 0, "Stampa ulteriori dati per debug" },
+    { "debug", 'D', 0, 0, "Print more data for debug" },
     { "buffer", 'B', "dimensione_buffer", 0, "Dimensione del buffer" },
     { 0 }
 };
@@ -76,8 +76,6 @@ static struct {
     bool vertex_labelled;
     bool big_first;
     Heuristic heuristic;
-    //char *filename1;
-    //char *filename2;
     vector<char*> filenames;
     int timeout;
     int threads;
@@ -98,8 +96,6 @@ void set_default_arguments() {
     arguments.edge_labelled = false;
     arguments.vertex_labelled = false;
     arguments.big_first = false;
-    //arguments.filename1 = NULL;
-    //arguments.filename2 = NULL;
     arguments.timeout = 0;
     arguments.threads = std::thread::hardware_concurrency();
     arguments.arg_num = 0;
@@ -171,13 +167,6 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
             } else {
                 arguments.filenames.push_back(arg);
             }
-	    /* else if (arguments.arg_num == 1) {
-                arguments.filename1 = arg;
-            } else if (arguments.arg_num == 2) {
-                arguments.filename2 = arg;
-            } else {
-                argp_usage(state);
-            }*/
             arguments.arg_num++;
             break;
         case ARGP_KEY_END:
@@ -454,8 +443,6 @@ void d_mcs(uchar *args, int n_threads, uchar a_size, uint *args_i, uint actual_i
 	sh_inc = actual_inc;
 	uint loc_sh_inc = actual_inc;
 	
-	//uchar last_inc = 0;
-	
 	__syncthreads();
 	if (my_idx < n_threads) {
 		for (int i = args_i[my_idx]; ( my_idx < n_threads-1 &&  i < args_i[my_idx +1] ) || ( my_idx == n_threads-1 && i < last_arg );) {
@@ -578,19 +565,7 @@ void h_generate_next_domains(uchar domains[][BDS], uint *bd_pos, uint cur_pos,
 
 
 bool check_sol(Graph *g0, Graph *g1, uchar sol[][2], uint sol_len) {
-	//bool *used_left = (bool*) calloc(g0->n, sizeof *used_left);
-	//bool *used_right = (bool*) calloc(g1->n, sizeof *used_right);
 	for (int i = 0; i < sol_len; i++) {
-		/*if (used_left[sol[i][L]]) {
-			printf("node %d of g0 used twice\n", used_left[sol[i][L]]);
-			return false;
-		}
-		if (used_right[sol[i][R]]) {
-			printf("node %d of g1 used twice\n", used_right[sol[i][L]]);
-			return false;
-		}
-		used_left[sol[i][L]] = true;
-		used_right[sol[i][R]] = true;*/
 		if (g0->label[sol[i][L]] != g1->label[sol[i][R]]) {
 			printf("g0:%d and g1:%d have different labels\n", sol[i][L],
 					sol[i][R]);
@@ -611,7 +586,6 @@ bool check_sol(Graph *g0, Graph *g1, uchar sol[][2], uint sol_len) {
 void launch_kernel(uchar *args, int n_threads, uchar a_size, uint sol_size, uint *args_i,
 		uchar incumbent[][2], uchar *inc_pos, uint total_args_size, uint last_arg) {
 		
-	//cout << "Lancio kernel" << endl;
 	uchar *device_args;
 	uchar *device_solutions;
 	uchar *host_solutions;
@@ -659,7 +633,6 @@ void launch_kernel(uchar *args, int n_threads, uchar a_size, uint sol_size, uint
 	checkCudaErrors(cudaFree(device_args_i));
 	checkCudaErrors(cudaFree(glo_sh_inc));
 
-	//cout << "Uscito dal kernel" << endl;
 	for(int b = 0; b < N_BLOCKS; b++){
 		if (*inc_pos < host_solutions[b*max_sol_size]) {
 			*inc_pos = host_solutions[b*max_sol_size];
@@ -670,20 +643,18 @@ void launch_kernel(uchar *args, int n_threads, uchar a_size, uint sol_size, uint
 			}if(arguments.verbose) printf("\n");
 		}
 	}
-	//cout << "stampati risultati" << endl;
 	free(host_solutions);
 	checkCudaErrors(cudaFree(device_solutions));
-	//cout << "ritorno alla raccolta dati" << endl;
 }
 
-struct Dati {
+struct Data {
 	uchar domains[BDS - 2];
 	uchar cur[__gpu_level][2];
 	uchar left[MAX_GRAPH_SIZE];
 	uchar right[MAX_GRAPH_SIZE];
 	
-	Dati() {}
-	Dati(uchar domains[][BDS], uchar cur[][2], uchar left[], uchar right[], /*uint bound_size,*/ uint bd_pos) {
+	Data() {}
+	Data(uchar domains[][BDS], uchar cur[][2], uchar left[], uchar right[], uint bd_pos) {
 		uint i;
 		for (i = 0; i < BDS - 2; i++) {
 			this->domains[i] = domains[bd_pos - 1][i];
@@ -700,14 +671,14 @@ struct Dati {
 		}
 	}
 };
-struct wrapperDati  {
+struct wrapperData  {
 	uint i;
 	uint number_of_bidomains;
 	uint bound_size;
 };
 
-vector<Dati> argomenti_globali;
-vector<wrapperDati> argomenti_i_globali;
+vector<Data> argomenti_globali;
+vector<wrapperData> argomenti_i_globali;
 vector<vector<uchar>> soluzione_globale;
 
 void *safe_realloc(void* old, uint new_size){
@@ -716,86 +687,70 @@ void *safe_realloc(void* old, uint new_size){
 	else exit(-1);
 }
 
-bool comparaDati(wrapperDati d1, wrapperDati d2)
+bool compareData(wrapperData d1, wrapperData d2)
 {
 	return (d1.bound_size <= d2.bound_size);
 }
 
-void pulisci_argomenti_v2(vector<Dati>& argomenti, vector<wrapperDati>& argomenti_i, uchar inc_pos, uint& n_args, int& n_threads) {
+void clean_arguments_v2(vector<Data>& arguments_to_clean, vector<wrapperData>& arguments_to_clean_i, uchar inc_pos, uint& n_args, int& n_threads) {
 	if(arguments.debug)
 		cout << "Inizio pulizia ... " << n_threads << " thread già eseguiti, " << +inc_pos << " dimensione trovata" << endl;
 		
 	n_threads -= min(N_BLOCKS * BLOCK_SIZE, n_threads);
 	if (n_threads == 0) {
 		n_args = 0;
-		argomenti.resize(0);
-		argomenti_i.resize(n_threads);
+		arguments_to_clean.resize(0);
+		arguments_to_clean_i.resize(n_threads);
 		return;
 	}
-	uint bound_inferiore = 0;
-	uint bound_superiore = n_threads-1;
+	uint lower_bound = 0;
+	uint higher_bound = n_threads-1;
 	uint i;
-	uint pos_inserimento_args_i = 0;
+	uint insertion_pos_args_i = 0;
 	
-	//cout << "dichiarazioni" << endl;
+	vector<Data> args(0);
+	args.reserve(arguments_to_clean.size());
 	
-	vector<Dati> args(0);
-	args.reserve(argomenti.size());
-	
-	//cout << "dichiarazione args" << endl;
-	
-	//cout << "bound inferiore: " << bound_inferiore << endl;
-	//cout << "bound superiore: " << bound_superiore << endl << endl;
-	
-	while (bound_inferiore != bound_superiore) {
-		i = (bound_inferiore + bound_superiore) / 2;
-		if (argomenti_i[i].bound_size <= inc_pos) {
-			bound_inferiore = i + 1;
-			//cout << "bound inferiore: " << bound_inferiore << endl;
-			//cout << "bound superiore: " << bound_superiore << endl << endl;
+	while (lower_bound != higher_bound) {
+		i = (lower_bound + higher_bound) / 2;
+		if (arguments_to_clean_i[i].bound_size <= inc_pos) {
+			lower_bound = i + 1;
 		}
 		else {
-			bound_superiore = i;
-			//cout << "bound inferiore: " << bound_inferiore << endl;
-			//cout << "bound superiore: " << bound_superiore << endl << endl;
+			higher_bound = i;
 		}
 	}
-	//cout << "Siamo usciti dal while!" << endl;
 	
-	//cout << argomenti_i[bound_inferiore].bound_size << " > " << argomenti_i[bound_inferiore - 1].bound_size << endl;
+	n_threads -= lower_bound;
 	
-	n_threads -= bound_inferiore;
-	
-	if (n_threads == 1 && argomenti_i[bound_inferiore].bound_size <= inc_pos) {
+	if (n_threads == 1 && arguments_to_clean_i[lower_bound].bound_size <= inc_pos) {
 		n_threads = 0;
 		n_args = 0;
-		argomenti.resize(0);
-		argomenti_i.resize(n_threads);
+		arguments_to_clean.resize(0);
+		arguments_to_clean_i.resize(n_threads);
 		return;
 	}
-	if ((bound_inferiore == 0) && ((time_to_clean++) != CLEAN)) {
-		argomenti_i.resize(n_threads);
+	if ((lower_bound == 0) && ((time_to_clean++) != CLEAN)) {
+		arguments_to_clean_i.resize(n_threads);
 		return;
 	}
 	time_to_clean = 0;
 	
 	for (i = 0; i < n_threads; i++) {
-		argomenti_i[pos_inserimento_args_i] = argomenti_i[bound_inferiore + i];
+		arguments_to_clean_i[insertion_pos_args_i] = arguments_to_clean_i[lower_bound + i];
 		uint pos_args = args.size();
-		for (int j = 0; j < argomenti_i[bound_inferiore + i].number_of_bidomains; j++) {
-			args.push_back(argomenti[argomenti_i[bound_inferiore + i].i + j]);
+		for (int j = 0; j < arguments_to_clean_i[lower_bound + i].number_of_bidomains; j++) {
+			args.push_back(arguments_to_clean[arguments_to_clean_i[lower_bound + i].i + j]);
 		}
-		argomenti_i[pos_inserimento_args_i++].i = pos_args;
+		arguments_to_clean_i[insertion_pos_args_i++].i = pos_args;
 	}
 	
-	argomenti = args;
+	arguments_to_clean = args;
 	n_args = args.size();
 	if(arguments.debug)
-		cout << "Fine pulizia" << endl;
+		cout << "End cleaning" << endl;
 	
-	argomenti_i.resize(n_threads);
-		
-	
+	arguments_to_clean_i.resize(n_threads);
 }
 
 
@@ -1033,7 +988,7 @@ void prepara_argomenti_globali (AtomicIncumbent & global_incumbent, vector<VtxPa
 	
 	//cout << "\tstable sort" << endl;
 	//cout << "\t\tn_threads = " << n_threads << endl;
-	stable_sort(argomenti_i_globali.begin(), argomenti_i_globali.begin() + n_threads, comparaDati);
+	stable_sort(argomenti_i_globali.begin(), argomenti_i_globali.begin() + n_threads, compareData);
 	
 	//cout << "\tcalcolo size" << endl;
 	
@@ -1121,7 +1076,7 @@ void prepara_argomenti_globali (AtomicIncumbent & global_incumbent, vector<VtxPa
 	if(arguments.debug)
 		cout << "Soluzione migliore: " << +(uchar)inc_pos << endl;
 	
-	pulisci_argomenti_v2(argomenti_globali, argomenti_i_globali, inc_pos, n_args, n_threads);
+	clean_arguments_v2(argomenti_globali, argomenti_i_globali, inc_pos, n_args, n_threads);
 	
 	if(arguments.debug)
 		cout << "\tthreads:             " << n_threads << endl <<
@@ -1132,8 +1087,8 @@ void prepara_argomenti_globali (AtomicIncumbent & global_incumbent, vector<VtxPa
 
 void compila_argomenti_globali (vector<Bidomain> & domini, uint bound_size, vector<VtxPair> & sol_corrente, vector<uchar> & left, vector<uchar> & right, AtomicIncumbent & global_incumbent, vector<VtxPair> & my_incumbent) { /////////////////////////////////////// NUOVA FUNZIONE ///////////////////////////////////////////
 	//cout << "compila argomenti globali" << endl;
-	Dati nuovo_arg;
-	wrapperDati pos_nuovo_arg;
+	Data nuovo_arg;
+	wrapperData pos_nuovo_arg;
 	//cout << "\tdichiarazioni" << endl;
 	pos_nuovo_arg.i = argomenti_globali.size();
 	pos_nuovo_arg.number_of_bidomains = domini.size();
