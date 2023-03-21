@@ -968,6 +968,13 @@ void sort_by_size_ascending(std::vector <struct GraphData> &gi) {
     }
 }
 
+auto floatToDuration(const float time_s)
+{
+    using namespace std::chrono;
+    using fsec = duration<float>;
+    return round<nanoseconds>(fsec{time_s});
+}
+
 int main(int argc, char** argv) {
     set_default_arguments();
     argp_parse(&argp, argc, argv, 0, 0, 0);
@@ -976,34 +983,27 @@ int main(int argc, char** argv) {
     int recursions_number = ceil(log2(n_files)) + 1;
     vector<vector<GraphData>> gi_data(recursions_number);
 
-
     char format = arguments.dimacs ? 'D' : arguments.lad ? 'L' : 'B';
     for (int i=0; i<n_files; i++) {
         gi_data.at(0).push_back(readGraph(arguments.filenames.at(i), format, arguments.directed,
             arguments.edge_labelled, arguments.vertex_labelled));
         gi_data.at(0).back().ordine = i;
     }
-    //struct Graph g0 = readGraph(arguments.filename1, format, arguments.directed,
-    //        arguments.edge_labelled, arguments.vertex_labelled);
-    //struct Graph g1 = readGraph(arguments.filename2, format, arguments.directed,
-    //        arguments.edge_labelled, arguments.vertex_labelled);
-
-
     
 	struct timespec s, finish;
 	float time_elapsed;
 	clock_gettime(CLOCK_MONOTONIC, &s);
-    //auto start = steady_clock::now();
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     HelpMe help_me(arguments.threads - 1);
     vector<std::thread> t;
     
+    bool aborted_at_least_once = false;
     bool aborted = false;
+    float timeout = arguments.timeout;
     
     for (int j = 0; j < recursions_number-1 && !aborted; j++) {
-        //cout << "ecco" << endl;
         std::thread timeout_thread;
         std::mutex timeout_mutex;
         std::condition_variable timeout_cv;
@@ -1013,9 +1013,9 @@ int main(int argc, char** argv) {
             timeout_thread = std::thread([&] {
 
                 if (j != recursions_number-2) {
-                    arguments.timeout = arguments.timeout/2;
+                    timeout = timeout/2;
                 }
-                auto abort_time = steady_clock::now() + std::chrono::seconds(arguments.timeout);
+                auto abort_time = steady_clock::now() + floatToDuration(timeout);
                 {
                     /* Sleep until either we've reached the time limit,
                     * or we've finished all the work. */
@@ -1023,6 +1023,7 @@ int main(int argc, char** argv) {
                     while (! abort_due_to_timeout.load()) {
                         if (std::cv_status::timeout == timeout_cv.wait_until(guard, abort_time)) {
                             /* We've woken up, and it's due to a timeout. */
+                            aborted_at_least_once = true;
                             aborted = true;
                             break;
                         }
@@ -1072,7 +1073,7 @@ int main(int argc, char** argv) {
     cout << ">>> " << sol_size << " - " << (double)time_elapsed << endl;
     
 
-    if (aborted)
+    if (aborted_at_least_once)
         cout << "TIMEOUT" << endl;
     
     return 0; 
