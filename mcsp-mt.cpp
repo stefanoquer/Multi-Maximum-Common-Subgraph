@@ -1031,18 +1031,37 @@ int main(int argc, char** argv) {
     //struct Graph g1 = readGraph(arguments.filename2, format, arguments.directed,
     //        arguments.edge_labelled, arguments.vertex_labelled);
 
-    std::thread timeout_thread;
-    std::mutex timeout_mutex;
-    std::condition_variable timeout_cv;
-    abort_due_to_timeout.store(false);
-    bool aborted = false;
 
-    if (0 != arguments.timeout) {
-        timeout_thread = std::thread([&] {
+    
+	struct timespec s, finish;
+	float time_elapsed;
+	clock_gettime(CLOCK_MONOTONIC, &s);
+    //auto start = steady_clock::now();
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    HelpMe help_me(arguments.threads - 1);
+    vector<std::thread> t;
+    
+    bool aborted = false;
+    
+    for (int j = 0; j < numero_ricorsioni-1 && !aborted; j++) {
+        //cout << "ecco" << endl;
+        std::thread timeout_thread;
+        std::mutex timeout_mutex;
+        std::condition_variable timeout_cv;
+        if (0 != arguments.timeout) {
+            
+            abort_due_to_timeout.store(false);
+            timeout_thread = std::thread([&] {
+
+                if (j != numero_ricorsioni-2) {
+                    arguments.timeout = arguments.timeout/2;
+                }
                 auto abort_time = steady_clock::now() + std::chrono::seconds(arguments.timeout);
                 {
                     /* Sleep until either we've reached the time limit,
-                     * or we've finished all the work. */
+                    * or we've finished all the work. */
                     std::unique_lock<std::mutex> guard(timeout_mutex);
                     while (! abort_due_to_timeout.load()) {
                         if (std::cv_status::timeout == timeout_cv.wait_until(guard, abort_time)) {
@@ -1054,19 +1073,8 @@ int main(int argc, char** argv) {
                 }
                 abort_due_to_timeout.store(true);
                 });
-    }
-	struct timespec s, finish;
-	float time_elapsed;
-	clock_gettime(CLOCK_MONOTONIC, &s);
-    //auto start = steady_clock::now();
+        }
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    HelpMe help_me(arguments.threads - 1);
-    vector<std::thread> t; 
-    
-    for (int j = 0; j < numero_ricorsioni-1 && !aborted; j++) {
-        //cout << "ecco" << endl;
         sort_by_size_ascending(gi_data.at(j));
         gi_data.at(j+1).resize(gi_data.at(j).size()/2 + gi_data.at(j).size()%2);
         
@@ -1080,6 +1088,20 @@ int main(int argc, char** argv) {
             t.at(i).join();
         }
         t.clear();
+        
+    
+        // Clean up the timeout thread
+        if (timeout_thread.joinable()) {
+            {
+                std::unique_lock<std::mutex> guard(timeout_mutex);
+                abort_due_to_timeout.store(true);
+                timeout_cv.notify_all();
+            }
+            timeout_thread.join();
+            if (j != numero_ricorsioni-2) {
+                aborted = false;
+            }
+        }
     }
     
     help_me.kill_workers();
@@ -1087,16 +1109,6 @@ int main(int argc, char** argv) {
     clock_gettime(CLOCK_MONOTONIC, &finish);
     time_elapsed = (finish.tv_sec - s.tv_sec);
     time_elapsed += (finish.tv_nsec - s.tv_nsec) / 1000000000.0;
-    
-    // Clean up the timeout thread
-    if (timeout_thread.joinable()) {
-        {
-            std::unique_lock<std::mutex> guard(timeout_mutex);
-            abort_due_to_timeout.store(true);
-            timeout_cv.notify_all();
-        }
-        timeout_thread.join();
-    }
     
     /*if (!check_sol(g0, g1, solution.first))
         fail("*** Error: Invalid solution\n");*/
