@@ -302,10 +302,10 @@ int find_min_value(int *arr, int start_idx, int len) {
     return min_v;
 }
 
-int select_bidomain(const vector<Multidomain>& domains, int* left,
+int select_multidomain(const vector<Multidomain>& domains, int* left,
         int current_matching_size)
 {
-    // Select the bidomain with the smallest max(leftsize, rightsize), breaking
+    // Select the multidomain with the smallest max(leftsize, rightsize), breaking
     // ties on the smallest vertex index in the left set
     int min_size = INT_MAX;
     int min_tie_breaker = INT_MAX;
@@ -477,7 +477,7 @@ void remove_vtx_from_domain(int *left, Multidomain& bd, int v, int idx)
     bd.len[idx]--;
 }
 
-void remove_bidomain(vector<Multidomain>& domains, int idx) {
+void remove_multidomain(vector<Multidomain>& domains, int idx) {
     domains[idx] = domains[domains.size()-1];
     domains.pop_back();
 }
@@ -566,7 +566,7 @@ void solve_nopar_recursive(Multidomain& bd, array<vector<int>, MAX_ARGS>& vv, st
             if (n_nodi_inseriti == 1) {
                 transform(bd.len + 1, bd.len+arguments.arg_num, bd.len + 1, [](int x) { return x + 1; });
                 if (bd.len[0] == 0)
-                    remove_bidomain(domains, bd_idx);
+                    remove_multidomain(domains, bd_idx);
 
                 solve_nopar(depth + 1, g, global_incumbent, my_incumbent, current, domains, vv, matching_size_goal, my_thread_nodes);
             }
@@ -602,7 +602,7 @@ void solve_nopar(const unsigned depth, vector<Graph> & g, /*g0, g1*/
     if (arguments.big_first && global_incumbent.value == matching_size_goal)
         return;
 
-    int bd_idx = select_bidomain(domains, vv[0].data(), current.size());
+    int bd_idx = select_multidomain(domains, vv[0].data(), current.size());
     if (bd_idx == -1)   // In the MCCS case, there may be nothing we can branch on
         return;
     Multidomain &bd = domains[bd_idx];
@@ -667,7 +667,7 @@ void solve_recursive(const int& i_end, array<vector<int>, MAX_ARGS>& vv, Multido
             if (n_nodi_inseriti == 1) {
                 transform(bd.len + 1, bd.len+arguments.arg_num, bd.len + 1, [](int x) { return x + 1; });
                 if (bd.len[0] == 0)
-                    remove_bidomain(domains, bd_idx);
+                    remove_multidomain(domains, bd_idx);
 
 
                 if (depth > split_levels) {
@@ -712,7 +712,7 @@ void solve(const unsigned depth, vector<Graph> & g,
     if (arguments.big_first && global_incumbent.value == matching_size_goal)
         return;
 
-    int bd_idx = select_bidomain(domains, vv[0].data(), current.size());
+    int bd_idx = select_multidomain(domains, vv[0].data(), current.size());
     if (bd_idx == -1)   // In the MCCS case, there may be nothing we can branch on
         return;
     Multidomain &bd = domains[bd_idx];
@@ -749,7 +749,7 @@ void solve(const unsigned depth, vector<Graph> & g,
         }
 
         /* rerun important stuff from before the loop */
-        int help_bd_idx = select_bidomain(help_domains, help_vv[0].data(), help_current.size());
+        int help_bd_idx = select_multidomain(help_domains, help_vv[0].data(), help_current.size());
         if (help_bd_idx == -1)   // In the MCCS case, there may be nothing we can branch on
             return;
         Multidomain &help_bd = help_domains[help_bd_idx];
@@ -805,7 +805,7 @@ void solve(const unsigned depth, vector<Graph> & g,
                 if (n_nodi_inseriti == 1) {
                     transform(help_bd.len + 1, help_bd.len+arguments.arg_num, help_bd.len + 1, [](int x) { return x + 1; });
                     if (help_bd.len[0] == 0)
-                        remove_bidomain(help_domains, help_bd_idx);
+                        remove_multidomain(help_domains, help_bd_idx);
 
                     if (i == which_i_should_i_run_next) {
                         which_i_should_i_run_next = shared_i++;
@@ -880,7 +880,7 @@ void solve(const unsigned depth, vector<Graph> & g,
                 if (n_nodi_inseriti == 1) {
                     transform(bd.len + 1, bd.len+arguments.arg_num, bd.len + 1, [](int x) { return x + 1; });
                     if (bd.len[0] == 0)
-                        remove_bidomain(domains, bd_idx);
+                        remove_multidomain(domains, bd_idx);
 
                     if (i == which_i_should_i_run_next) {
                         which_i_should_i_run_next = shared_i++;
@@ -936,7 +936,7 @@ std::pair<vector<VtxSet>, unsigned long long> mcs(vector<Graph> & gi) {
 
     std::set<unsigned int> labels = intersection(labels_vv);
     
-    // Create a bidomain for each label that appears in both graphs
+    // Create a multidomain for each label that appears in both graphs
     for (unsigned int label : labels) {
         int starts[MAX_ARGS];
         int len[MAX_ARGS];
