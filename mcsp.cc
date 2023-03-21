@@ -349,7 +349,7 @@ inline int find_min_value(const int *arr, const int start_idx, const int len) {
 inline int select_multidomain(const vector<Multidomain>& domains, const int* left,
         const int current_matching_size)
 {
-    // Select the bidomain with the smallest max(leftsize, rightsize), breaking
+    // Select the multidomain with the smallest max(leftsize, rightsize), breaking
     // ties on the smallest vertex index in the left set
     int min_size = INT_MAX;
     int min_tie_breaker = INT_MAX;
@@ -535,7 +535,7 @@ inline void remove_vtx_from_domain(int *left, Multidomain& bd, int v, int idx)
     bd.len[idx]--;
 }
 
-inline void remove_bidomain(vector<Multidomain>& domains, const int idx) {
+inline void remove_multidomain(vector<Multidomain>& domains, const int idx) {
     domains[idx] = domains[domains.size()-1];
     domains.pop_back();
 }
@@ -686,7 +686,7 @@ void sorted_solve_nopar(const unsigned depth, vector<Graph> & g,
 
     if (bd.len[sorted_vv_idx[0]] == 0)
     {
-        remove_bidomain(domains, bd_idx);
+        remove_multidomain(domains, bd_idx);
     }
     else 
     {
@@ -844,7 +844,7 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
 
         if (bd.len[sorted_vv_idx[0]] == 0)
         {
-            remove_bidomain(help_domains, bd_idx);
+            remove_multidomain(help_domains, bd_idx);
         }
         else
         {
@@ -915,7 +915,7 @@ void sorted_solve(const unsigned depth, vector<Graph>& g,
 
         if (bd.len[sorted_vv_idx[0]] == 0)
         {
-            remove_bidomain(domains, bd_idx);
+            remove_multidomain(domains, bd_idx);
         }
         else
         {
@@ -977,7 +977,7 @@ std::pair<vector<VtxSet>, unsigned long long> mcs(vector<Graph> & gi) {
 
     std::set<unsigned int> labels = intersection(labels_vv);
     
-    // Create a bidomain for each label that appears in both graphs
+    // Create a multidomain for each label that appears in both graphs
     for (unsigned int label : labels) {
         int starts[MAX_ARGS] = {};
         int len[MAX_ARGS] = {};
