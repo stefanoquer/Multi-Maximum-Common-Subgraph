@@ -7,7 +7,7 @@ Custom implementation, little to no optimizations, only sequential, written in C
 Same as the previous, but ported to C++ and made parallel in order to allow for multithreading.
 
 ## [MultiGraph](https://github.com/Lorenzo-Cardone/McSplit_Multigraph/tree/MultiGraph)
-The default implementation, derived from the original McSplit with added multithreading, with very little optimization applied.
+The default implementation, derived from the original McSplit code with added multithreading, with very little optimization applied.
 
 ## [MultiGraph_FixedSize](https://github.com/Lorenzo-Cardone/McSplit_Multigraph/tree/MultiGraph_FixedSize)
 Improved implementation: dynamic sized structures are mostly updated to static ones.
