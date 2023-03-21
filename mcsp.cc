@@ -601,6 +601,13 @@ void show(vector<VtxPair>& current, vector<Bidomain>& domains, array<vector<int>
     printf("\n\n");
 }
 
+void print_solution(const vector<VtxPair> &sol) {
+    for (VtxPair v : sol) {
+        cout << "(" << v.vv[0] << " -> " << v.vv[1] << ") ";
+    }
+    cout << endl;
+}
+
 void solve_nopar(const unsigned depth, vector<Graph> & g, /*g0, g1*/
         AtomicIncumbent & global_incumbent,
         vector<VtxPair> & my_incumbent,
@@ -619,6 +626,7 @@ void solve_nopar(const unsigned depth, vector<Graph> & g, /*g0, g1*/
     if (my_incumbent.size() < current.size()) {
         my_incumbent = current;
         global_incumbent.update(current.size());
+        //print_solution(current);
     }
 
     unsigned int bound = current.size() + calc_bound(domains);
@@ -792,6 +800,7 @@ void solve(const unsigned depth, vector<Graph> & g,
     my_thread_nodes++;
 
     if (per_thread_incumbents.find(std::this_thread::get_id())->second.size() < current.size()) {
+        //print_solution(current);
         per_thread_incumbents.find(std::this_thread::get_id())->second = current;
         global_incumbent.update(current.size());
     }
