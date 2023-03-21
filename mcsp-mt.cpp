@@ -74,8 +74,6 @@ static struct {
     bool vertex_labelled;
     bool big_first;
     Heuristic heuristic;
-    //char *filename1;
-    //char *filename2;
     vector<char*> filenames;
     int timeout;
     int threads;
@@ -94,8 +92,6 @@ void set_default_arguments() {
     arguments.edge_labelled = false;
     arguments.vertex_labelled = false;
     arguments.big_first = false;
-    //arguments.filename1 = NULL;
-    //arguments.filename2 = NULL;
     arguments.timeout = 0;
     arguments.threads = std::thread::hardware_concurrency();
     arguments.arg_num = 0;
@@ -160,13 +156,6 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
             } else {
                 arguments.filenames.push_back(arg);
             }
-	    /* else if (arguments.arg_num == 1) {
-                arguments.filename1 = arg;
-            } else if (arguments.arg_num == 2) {
-                arguments.filename2 = arg;
-            } else {
-                argp_usage(state);
-            }*/
             arguments.arg_num++;
             break;
         case ARGP_KEY_END:
@@ -292,10 +281,6 @@ struct HelpMe
                         std::unique_lock<std::mutex> guard(general_mutex);
                         bool did_something = false;
                         for (std::map<Position, Task>::iterator task = tasks.begin() ; task != tasks.end() ; ++task) {
-                            // std::cout<< task->first.depth << " - ";
-                             //for(int m = 0; m < task->first.values.size(); m++)
-                                //std::cout << task->first.values[m] << " ";
-                            //std::cout << std::endl;
                             if (task->second.func) { // whait for a function to be associated to this task by help_me_with()
                                 auto f = task->second.func;
                                 ++task->second.pending;
@@ -379,7 +364,7 @@ struct HelpMe
 std::atomic<int> indice_help_me(0);
 
 bool check_sol(const Graph & g0, const Graph & g1 , const vector<VtxPair> & solution) {
-    //return true;
+
     vector<bool> used_left(g0.n, false);
     vector<bool> used_right(g1.n, false);
     unsigned int sol_size = solution.size();
@@ -544,11 +529,6 @@ void solve_nopar(const unsigned depth, const Graph & g0, const Graph & g1,
     if (abort_due_to_timeout)
         return;
 
-    //if(!check_sol(g0, g1, current)) {
-    //    cout << "???!?!?!?!???" << endl;
-    //}
-
-	//cout << "Thread: " << std::this_thread::get_id() << endl;
     my_thread_nodes++;
 
     if (my_incumbent.size() < current.size()) {
@@ -570,8 +550,6 @@ void solve_nopar(const unsigned depth, const Graph & g0, const Graph & g1,
 
     bd.right_len--;
     std::atomic<int> shared_i{ 0 };
-
-    //std::cout << "solve_nopar - " << std::this_thread::get_id() << std::endl;
 
 
     int v = find_min_value(left, bd.l, bd.left_len);
@@ -615,10 +593,6 @@ void solve(const unsigned depth, const Graph & g0, const Graph & g1,
     if (abort_due_to_timeout)
         return;
 
-    //if(!check_sol(g0, g1, current)) {
-    //    cout << "???!?!?!?!???" << endl;
-    //}
-
     my_thread_nodes++;
     if (per_thread_incumbents.find(std::this_thread::get_id())->second.size() < current.size()) {
         per_thread_incumbents.find(std::this_thread::get_id())->second = current;
@@ -640,8 +614,6 @@ void solve(const unsigned depth, const Graph & g0, const Graph & g1,
     std::atomic<int> shared_i{ 0 };
     const int i_end = bd.right_len + 2; /* including the null */
 
-    // std::cout << "solve - " << std::hash<std::thread::id>{}(std::this_thread::get_id())%100000 << std::endl;
-    //usleep(std::hash<std::thread::id>{}(std::this_thread::get_id())%100000+1000000);
     // Version of the loop used by helpers
     std::function<void (unsigned long long &)> helper_function = [&shared_i, &g0, &g1, &global_incumbent, &per_thread_incumbents, &position, &depth,
         i_end, matching_size_goal, current, domains, left, right, &help_me] (unsigned long long & help_thread_nodes) {
@@ -722,7 +694,6 @@ void solve(const unsigned depth, const Graph & g0, const Graph & g1,
         int v = find_min_value(left, bd.l, bd.left_len);
         remove_vtx_from_left_domain(left, domains[bd_idx], v);
         int w = -1;
-        //std::cout << "main funtion - " << std::this_thread::get_id() << std::endl;
 
         for (int i = 0 ; i < i_end /* not != */ ; i++) {
             if (i != i_end - 1) {
@@ -779,7 +750,6 @@ void solve(const unsigned depth, const Graph & g0, const Graph & g1,
 std::pair<vector<VtxPair>, unsigned long long> mcs(const Graph & g0, const Graph & g1, HelpMe & help_me) {
     vector<int> left;  // the buffer of vertex indices for the left partitions
     vector<int> right;  // the buffer of vertex indices for the right partitions
-    //std::cout << "mcs - " << std::this_thread::get_id() << std::endl;
 
     srand(time(nullptr));
     auto domains = vector<Bidomain> {};
@@ -827,11 +797,9 @@ std::pair<vector<VtxPair>, unsigned long long> mcs(const Graph & g0, const Graph
             per_thread_incumbents.emplace(std::this_thread::get_id(), vector<VtxPair>());
             Position position;
             position.add(0, indice_help_me++);
-            //HelpMe help_me(arguments.threads - 1);
             for (auto & t : help_me.threads)
                 per_thread_incumbents.emplace(t.get_id(), vector<VtxPair>());
             solve(0, g0, g1, global_incumbent, per_thread_incumbents, current, domains_copy, left_copy, right_copy, goal, position, help_me, global_nodes);
-            //help_me.kill_workers();
             for (auto & n : help_me.nodes) {
                 global_nodes += n;
             }
@@ -848,11 +816,9 @@ std::pair<vector<VtxPair>, unsigned long long> mcs(const Graph & g0, const Graph
         per_thread_incumbents.emplace(std::this_thread::get_id(), vector<VtxPair>());
         Position position;
         position.add(0, indice_help_me++);
-        //HelpMe help_me(arguments.threads - 1);
         for (auto & t : help_me.threads)
             per_thread_incumbents.emplace(t.get_id(), vector<VtxPair>());
         solve(0, g0, g1, global_incumbent, per_thread_incumbents, current, domains, left, right, 1, position, help_me, global_nodes);
-        //help_me.kill_workers();
         for (auto & n : help_me.nodes)
             global_nodes += n;
         for (auto & i : per_thread_incumbents)
@@ -882,19 +848,14 @@ int sum(const vector<int> & vec) {
 GraphData write_Graph(GraphData* g0, GraphData* g1, vector<VtxPair>& solution) {
 
     unsigned int sol_size = solution.size();
-    //cout << "Stampando soluzione di dimensione: " << solution.size() << endl;
-
-    //cout << "\tOrdine g0: " << g0->ordine << "\tOrdine g1: " << g1->ordine << endl;
+    
     GraphData gd(Graph (sol_size), g0, g1);
-    //cout << "\tOrdine g0: " << gd.g0->ordine << "\tOrdine g1: " << gd.g1->ordine << endl;
     
     vector<bool> vtx_v(g0->g.n, false), vtx_w(g1->g.n, false);
     for (unsigned int i = 0; i < sol_size; i++) {
-        //cout << solution[i].v << " " << solution[i].w << endl;
         vtx_v[solution[i].v] = true;
         vtx_w[solution[i].w] = true;
     }
-    //cout << "pre adjmat e map_g0" << endl;
     int ii = 0, jj = 0;
     for (int i = 0; i < g0->g.n; i++) {
         if (vtx_v[i]) {
@@ -910,7 +871,6 @@ GraphData write_Graph(GraphData* g0, GraphData* g1, vector<VtxPair>& solution) {
             ii++;
         }
     }
-    //cout << "pre map_g1" << endl;
     ii = 0;
     for (int i = 0; i < gd.g.n; i++) {
         for (unsigned int j = 0; j < sol_size; j++) {
@@ -919,7 +879,6 @@ GraphData write_Graph(GraphData* g0, GraphData* g1, vector<VtxPair>& solution) {
             }
         }
     }
-    //cout << "Fine write_Graph" << endl;
     return gd;
 }
 
@@ -928,12 +887,12 @@ void recursive_print (GraphData *gd, vector<int> &sol, int map) {
 		recursive_print(gd->g0, sol, gd->map_g0.at(map));
 		recursive_print(gd->g1, sol, gd->map_g1.at(map));
 	}
-	else { //questo è uno dei grafi originali
+	else { // this is one of the original graphs
 		sol.at(gd->ordine) = map;
 	}
 }
 
-void nuova_print (vector<vector<GraphData>> &gd) {
+void new_print (vector<vector<GraphData>> &gd) {
 	int n_files = arguments.filenames.size();
 	vector<int> sol(n_files);
 	GraphData *root = &gd.back().at(0);
@@ -952,7 +911,6 @@ void nuova_print (vector<vector<GraphData>> &gd) {
 
 void produci_soluzione (vector<GraphData> &grafi, vector<GraphData> &sol, int indice, HelpMe & help_me) {
 	int g0_index = indice, g1_index = grafi.size()-1-indice;
-    //int g0_index = 2*indice, g1_index = 2*indice+1;
     Graph *g0 = &grafi.at(g0_index).g;
 	Graph *g1 = &grafi.at(g1_index).g;
 	vector<int> g0_deg = calculate_degrees(*g0);
@@ -990,12 +948,11 @@ void produci_soluzione (vector<GraphData> &grafi, vector<GraphData> &sol, int in
 
 
     if (!check_sol(*g0, *g1, solution.first)) {
-        cout << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << endl;
+        cout << "WRONG SOLUTION" << endl;
+        exit (-1);
     }
 
-	//cout << sol.size() << " - " << indice << endl;
 	sol.at(indice) = write_Graph(&grafi.at(g0_index), &grafi.at(g1_index), solution.first);
-	//write_Graph(GraphData* g0, GraphData* g1, vector<VtxPair>& solution)
 }
 
 void sort_by_size_ascending(std::vector <struct GraphData> &gi) {
@@ -1016,8 +973,8 @@ int main(int argc, char** argv) {
     argp_parse(&argp, argc, argv, 0, 0, 0);
     
     int n_files = arguments.filenames.size();
-    int numero_ricorsioni = ceil(log2(n_files)) + 1;
-    vector<vector<GraphData>> gi_data(numero_ricorsioni);
+    int recursions_number = ceil(log2(n_files)) + 1;
+    vector<vector<GraphData>> gi_data(recursions_number);
 
 
     char format = arguments.dimacs ? 'D' : arguments.lad ? 'L' : 'B';
@@ -1045,7 +1002,7 @@ int main(int argc, char** argv) {
     
     bool aborted = false;
     
-    for (int j = 0; j < numero_ricorsioni-1 && !aborted; j++) {
+    for (int j = 0; j < recursions_number-1 && !aborted; j++) {
         //cout << "ecco" << endl;
         std::thread timeout_thread;
         std::mutex timeout_mutex;
@@ -1055,7 +1012,7 @@ int main(int argc, char** argv) {
             abort_due_to_timeout.store(false);
             timeout_thread = std::thread([&] {
 
-                if (j != numero_ricorsioni-2) {
+                if (j != recursions_number-2) {
                     arguments.timeout = arguments.timeout/2;
                 }
                 auto abort_time = steady_clock::now() + std::chrono::seconds(arguments.timeout);
@@ -1098,7 +1055,7 @@ int main(int argc, char** argv) {
                 timeout_cv.notify_all();
             }
             timeout_thread.join();
-            if (j != numero_ricorsioni-2) {
+            if (j != recursions_number-2) {
                 aborted = false;
             }
         }
@@ -1109,28 +1066,14 @@ int main(int argc, char** argv) {
     clock_gettime(CLOCK_MONOTONIC, &finish);
     time_elapsed = (finish.tv_sec - s.tv_sec);
     time_elapsed += (finish.tv_nsec - s.tv_nsec) / 1000000000.0;
-    
-    /*if (!check_sol(g0, g1, solution.first))
-        fail("*** Error: Invalid solution\n");*/
-        
-    /*for(int i=0; i<gi_data.size(); i++) {
-    	cout << gi_data.at(i).size() << " - ";
-    	for(int j=0; j<gi_data.at(i).size(); j++) {
-    		cout << gi_data.at(i).at(j).g.n << " ";
-    	}
-    	cout << endl;
-    }*/
 
-    nuova_print(gi_data);
+    new_print(gi_data);
     int sol_size = gi_data.back().at(0).g.n;
-    cout << ">>> " << sol_size << " - " << (double)time_elapsed/*/1000*/ << endl;
+    cout << ">>> " << sol_size << " - " << (double)time_elapsed << endl;
     
-    //fprintf(stdout, ">>> %ld - %015.010f\n", solution.first.size(), (double)(time_elapsed));
-    //cout << ">>> " << solution.first.size() << " - " << (double)(end-begin)/CLOCKS_PER_SEC << endl;
 
     if (aborted)
         cout << "TIMEOUT" << endl;
     
-    return 0; /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    
+    return 0; 
 }
