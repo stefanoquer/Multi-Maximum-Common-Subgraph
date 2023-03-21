@@ -2065,6 +2065,12 @@ void sort_by_size_ascending(std::vector <struct GraphData> &gi) {
     }
 }
 
+auto floatToDuration(const float time_s) {
+    using namespace std::chrono;
+    using fsec = duration<float>;
+    return round<nanoseconds>(fsec{time_s});
+}
+
 int main(int argc, char** argv) {
     set_default_arguments();
     argp_parse(&argp, argc, argv, 0, 0, 0);
@@ -2085,30 +2091,7 @@ int main(int argc, char** argv) {
     //struct Graph g1 = readGraph(arguments.filename2, format, arguments.directed,
     //        arguments.edge_labelled, arguments.vertex_labelled);
 
-    std::thread timeout_thread;
-    std::mutex timeout_mutex;
-    std::condition_variable timeout_cv;
-    abort_due_to_timeout.store(false);
-    bool aborted = false;
-
-    if (0 != arguments.timeout) {
-        timeout_thread = std::thread([&] {
-                auto abort_time = steady_clock::now() + std::chrono::seconds(arguments.timeout);
-                {
-                    /* Sleep until either we've reached the time limit,
-                     * or we've finished all the work. */
-                    std::unique_lock<std::mutex> guard(timeout_mutex);
-                    while (! abort_due_to_timeout.load()) {
-                        if (std::cv_status::timeout == timeout_cv.wait_until(guard, abort_time)) {
-                            /* We've woken up, and it's due to a timeout. */
-                            aborted = true;
-                            break;
-                        }
-                    }
-                }
-                abort_due_to_timeout.store(true);
-                });
-    }
+    
 	struct timespec s, finish;
 	float time_elapsed;
 	clock_gettime(CLOCK_MONOTONIC, &s);
@@ -2118,8 +2101,38 @@ int main(int argc, char** argv) {
 
     HelpMe help_me(arguments.threads - 1);
     vector<std::thread> t; 
+    bool aborted = false;
+    bool aborted_at_least_once = false;
+    float timeout = arguments.timeout;
     
     for (int j = 0; j < numero_ricorsioni-1 && !aborted; j++) {
+        std::thread timeout_thread;
+        std::mutex timeout_mutex;
+        std::condition_variable timeout_cv;
+        abort_due_to_timeout.store(false);
+
+        if (0 != arguments.timeout) {
+            timeout_thread = std::thread([&] {
+                if (j != numero_ricorsioni-2) {
+                    timeout = timeout/2;
+                }
+                auto abort_time = steady_clock::now() + floatToDuration(timeout);
+                {
+                    /* Sleep until either we've reached the time limit,
+                        * or we've finished all the work. */
+                    std::unique_lock<std::mutex> guard(timeout_mutex);
+                    while (! abort_due_to_timeout.load()) {
+                        if (std::cv_status::timeout == timeout_cv.wait_until(guard, abort_time)) {
+                            /* We've woken up, and it's due to a timeout. */
+                            aborted_at_least_once = true;
+                            aborted = true;
+                            break;
+                        }
+                    }
+                }
+                abort_due_to_timeout.store(true);
+                });
+        }
         //cout << "ecco" << endl;
         sort_by_size_ascending(gi_data.at(j));
         gi_data.at(j+1).resize(gi_data.at(j).size()/2 + gi_data.at(j).size()%2);
@@ -2141,6 +2154,17 @@ int main(int argc, char** argv) {
             t.at(i).join();
         }
         t.clear();
+
+        // Clean up the timeout thread
+        if (timeout_thread.joinable()) {
+            {
+                std::unique_lock<std::mutex> guard(timeout_mutex);
+                abort_due_to_timeout.store(true);
+                timeout_cv.notify_all();
+            }
+            timeout_thread.join();
+            aborted = false;
+        }
     }
     
     help_me.kill_workers();
@@ -2148,16 +2172,6 @@ int main(int argc, char** argv) {
     clock_gettime(CLOCK_MONOTONIC, &finish);
     time_elapsed = (finish.tv_sec - s.tv_sec);
     time_elapsed += (finish.tv_nsec - s.tv_nsec) / 1000000000.0;
-    
-    // Clean up the timeout thread
-    if (timeout_thread.joinable()) {
-        {
-            std::unique_lock<std::mutex> guard(timeout_mutex);
-            abort_due_to_timeout.store(true);
-            timeout_cv.notify_all();
-        }
-        timeout_thread.join();
-    }
     
     /*if (!check_sol(g0, g1, solution.first))
         fail("*** Error: Invalid solution\n");*/
@@ -2177,7 +2191,7 @@ int main(int argc, char** argv) {
     //fprintf(stdout, ">>> %ld - %015.010f\n", solution.first.size(), (double)(time_elapsed));
     //cout << ">>> " << solution.first.size() << " - " << (double)(end-begin)/CLOCKS_PER_SEC << endl;
 
-    if (aborted)
+    if (aborted_at_least_once)
         cout << "TIMEOUT" << endl;
     
     return 0; /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
