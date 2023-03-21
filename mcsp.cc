@@ -258,30 +258,18 @@ struct HelpMe
 
 bool check_sol(const vector<Graph> & g, const vector<VtxSet> & solution) {
 
-    for (int ng = 1; ng < arguments.arg_num; ng++) {
-        vector<bool> used_left(g[0].n, false);
-        vector<bool> used_right(g[ng].n, false);
-
-        for (int i = 0; i < arguments.arg_num; i++) {
-            struct VtxSet p0 = solution[i];
-
-            if (used_left[p0.vv[0]] || used_right[p0.vv[ng]])
+    for (size_t i = 0; i < solution.size(); i++) {
+        for (size_t ng = 1; ng < arguments.arg_num; ng++) {
+            if(g[0].label[solution[i].vv[0]] != g[ng].label[solution[i].vv[ng]]) {
                 return false;
-
-            used_left[p0.vv[0]] = true;
-            used_right[p0.vv[ng]] = true;
-
-            if (g[0].label[p0.vv[0]] != g[ng].label[p0.vv[ng]])
-                return false;
-
-            for (int j = i + 1; j < arguments.arg_num; j++) {
-                struct VtxSet p1 = solution[j];
-                if (g[0].adjmat[p0.vv[0]][p1.vv[0]] != g[ng].adjmat[p0.vv[ng]][p1.vv[ng]])
+            }
+            for (size_t j = i+1; j < solution.size(); j++) {
+                if(g[0].adjmat[solution[i].vv[0]][solution[j].vv[0]] != g[ng].adjmat[solution[i].vv[ng]][solution[j].vv[ng]]) {
                     return false;
+                }
             }
         }
     }
-
     return true;
 }
 
