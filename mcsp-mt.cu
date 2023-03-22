@@ -621,8 +621,9 @@ void launch_kernel(uchar *args, int n_threads, uchar a_size, uint sol_size, uint
 
 	while(cudaEventQuery(stop) == cudaErrorNotReady){
 		nanosleep(&sleep, NULL);
-		if(arguments.timeout && compute_elapsed_sec(start) > arguments.timeout)
-			return;
+		if(arguments.timeout && compute_elapsed_sec(start) > arguments.timeout) {
+			break;
+        }
 	}
 
 	if(arguments.verbose) printf("Kernel executed...\n");
@@ -633,7 +634,9 @@ void launch_kernel(uchar *args, int n_threads, uchar a_size, uint sol_size, uint
 	checkCudaErrors(cudaFree(device_args_i));
 	checkCudaErrors(cudaFree(glo_sh_inc));
 
+    cout << "Inc_pos = " << *inc_pos << endl;
 	for(int b = 0; b < N_BLOCKS; b++){
+        //cout << "th_" << b << " found solution: " << host_solutions[b*max_sol_size] << endl;
 		if (*inc_pos < host_solutions[b*max_sol_size]) {
 			*inc_pos = host_solutions[b*max_sol_size];
 			for (int i = 1; i < *inc_pos + 1; i++) {
@@ -1861,8 +1864,6 @@ GraphData write_Graph(GraphData* g0, GraphData* g1, vector<VtxPair>& solution) {
     for (int i = 0; i < gd.g.n; i++) {
         for (unsigned int j = 0; j < sol_size; j++) {
             if (gd.map_g0.at(i) == solution.at(j).v) {
-                if (solution.at(j).w > 20)
-                    cout << solution.at(j).w << endl;
                 gd.map_g1.at(i) = solution.at(j).w;
             }
         }
@@ -1873,12 +1874,7 @@ GraphData write_Graph(GraphData* g0, GraphData* g1, vector<VtxPair>& solution) {
 
 void recursive_print (GraphData *gd, vector<int> &sol, int map) {
 	if(gd->g0 != nullptr) {
-        //cout << "map: " << map << endl;
-        if (gd->map_g0.at(map) > 20)
-            cout << "map_g0: " << gd->map_g0.at(map) << endl;
 		recursive_print(gd->g0, sol, gd->map_g0.at(map));
-        if (gd->map_g1.at(map) > 20)
-            cout << "map_g1: " << gd->map_g1.at(map) << endl;
 		recursive_print(gd->g1, sol, gd->map_g1.at(map));
 	}
 	else { //questo è uno dei grafi originali
@@ -1978,20 +1974,13 @@ void GPU_produci_soluzione (vector<GraphData> &grafi, vector<GraphData> &sol, in
 
 	// Convert to indices from original, unsorted graphs
 	for (auto& vtx_pair : solution.first) {
-        if (vtx_pair.v >= 20 || vtx_pair.w >= 20) {
-            cout << "v: " << vtx_pair.v << endl;
-            cout << "w: " << vtx_pair.w << endl;
-        }
-        if (vv0[vtx_pair.v] >= 20 || vv1[vtx_pair.w] >= 20) {
-            cout << "v[" << vv0.size() << "]: " << vtx_pair.v << " -> " << vv0[vtx_pair.v] << endl;
-            cout << "w[" << vv1.size() << "]: " << vtx_pair.w << " -> " << vv1[vtx_pair.w] << endl;
-        }
 		vtx_pair.v = vv0[vtx_pair.v];
 		vtx_pair.w = vv1[vtx_pair.w];
 	}
 
     if (!check_sol(*g0, *g1, solution.first)) {
-        cout << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << endl;
+        cout << "WRONG SOLUTION!" << endl;
+        exit (-1);
     }
 
 	//cout << sol.size() << " - " << indice << endl;
@@ -2154,6 +2143,12 @@ int main(int argc, char** argv) {
             t.at(i).join();
         }
         t.clear();
+
+        if (aborted) cout << "TIMEOUT ";
+        for (auto &dato : gi_data.at(j+1)) {
+            cout << dato.g.n << " ";
+        }
+        cout << endl;
 
         // Clean up the timeout thread
         if (timeout_thread.joinable()) {
