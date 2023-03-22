@@ -21,7 +21,7 @@ struct Graph {
 };
 
 struct SolutionGraph {
-    SolutionGraph* padre = nullptr;
+    SolutionGraph* parent = nullptr;
     const Graph* g0;
     const Graph* g1;
     std::vector<int> map_g0;

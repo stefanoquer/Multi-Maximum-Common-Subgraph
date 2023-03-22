@@ -179,7 +179,7 @@ SolutionGraph* copy_solution(SolutionGraph* sg)
     SolutionGraph* new_sol = new SolutionGraph(sg->g->n, sg->g0, sg->g1);
     new_sol->map_g0 = sg->map_g0;
     new_sol->map_g1 = sg->map_g1;
-    new_sol->padre = sg->padre;
+    new_sol->parent = sg->parent;
     new_sol->g->adjmat = sg->g->adjmat;
     new_sol->g->label = sg->g->label;
     return new_sol;

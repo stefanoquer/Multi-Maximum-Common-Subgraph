@@ -18,10 +18,7 @@
 #include <cassert>
 #include <array>
 #include <math.h>
-
-#ifndef _WIN32
 #include <argp.h>
-#endif // !_WIN32
 
 #include <limits.h>
 #include <stdio.h>
@@ -64,16 +61,12 @@ static struct {
     int n_files;
     int arg_num;
     std::vector<char*> filenames;
-    //char *filename1;
-    //char *filename2;
     int timeout;
     int threads;
     unsigned long max_number_solutions;
     bool piu_soluzioni;
 } arguments;
 
-
-#ifndef _WIN32
 static char doc[] = "Find a maximum clique in a graph in DIMACS format\vHEURISTIC can be min_max or min_product";
 static char args_doc[] = "HEURISTIC N_FILES FILENAME1 FILENAME2 ... FILENAMEN";
 static struct argp_option options[] = {
@@ -166,77 +159,10 @@ static error_t parse_opt(int key, char* arg, struct argp_state* state) {
 }
 
 static struct argp argp = { options, parse_opt, args_doc, doc };
-#else
-
-
-void parse(char key, char* val, int& counter) {
-    switch (key) {
-    case 'v':
-        arguments.verbose = true;
-        break;
-    case 'l':
-        arguments.lad = true;
-        if (arguments.lad && arguments.dimacs) {
-            exit(-200);
-        }
-        break;
-    case 'd':
-        arguments.dimacs = true;
-        if (arguments.lad && arguments.dimacs) {
-            exit(-200);
-        }
-        break;
-    case 't':
-        arguments.timeout = atoi(val);
-        counter++;
-        break;
-    case 'h':
-        arguments.threads = atoi(val);
-        counter++;
-        break;
-    case 'a':
-        arguments.filenames.push_back(val);
-        arguments.n_files++;
-        break;
-    case 'b':
-        arguments.big_first = true;
-        break;
-    case 'i':
-        arguments.directed = true;
-        break;
-    case 'p':
-        arguments.piu_soluzioni = true;
-        break;
-    case 's':
-        arguments.max_number_solutions = atoi(val);
-        counter++;
-        break;
-    }
-}
-
-void arg_parse(int argc, char** argv) {
-    for (int i = 1; i < argc; i++) {
-        std::string arg = argv[i];
-        if (argv[i][0] == '-') {
-            parse(argv[i][1], argv[i + 1], i);
-        }
-        else
-        {
-            parse('a', argv[i], i);
-        }
-
-    }
-}
-#endif
 
 std::vector< std::unique_ptr<std::atomic<bool>> > abort_due_to_timeout;
-//std::vector< std::unique_ptr<std::atomic<bool>> > stop_due_to_print;
-//std::vector< std::unique_ptr<std::atomic<bool>> > printed;
 std::vector< std::unique_ptr<std::mutex> > private_mux;
 std::vector< std::unique_ptr<std::condition_variable> > private_cv;
-std::vector< std::unique_ptr<std::mutex> > print_mux;
-std::vector< std::unique_ptr<std::condition_variable> > print_cv;
-std::vector< std::unique_ptr<std::thread> > print_thread;
 
 std::vector< std::vector < SolutionGraph* > > sol_mat;
 std::vector< SolutionGraph* > sol_intermedie;
@@ -251,8 +177,6 @@ void set_default_arguments() {
     arguments.edge_labelled = false;
     arguments.vertex_labelled = false;
     arguments.big_first = false;
-    //arguments.filename1 = NULL;
-    //arguments.filename2 = NULL;
     arguments.arg_num = 0;
     arguments.n_files = 0;
     arguments.timeout = 0;
@@ -427,10 +351,6 @@ struct HelpMe
         threads.clear();
 
         if (! times.empty()) {
-            /*cout << "Thread work times";
-            for (auto & t : times)
-                cout << " " << t.count();
-            cout << endl;*/
             times.clear();
         }
     }
@@ -472,15 +392,14 @@ bool or_function(bool a, bool b) {
     return a || b;
 }
 
-bool controlla_isomorfirmo(vector<vector<VtxPair>>& incumbent, vector<VtxPair>& current, const Graph& g0, const Graph& g1, int size) {
-    vector<bool> v_corrente(g0.n, false), w_corrente(g1.n, false);
-    //bool v_res = true, w_res = true;
+bool check_isomorphism(vector<vector<VtxPair>>& incumbent, vector<VtxPair>& current, const Graph& g0, const Graph& g1, int size) {
+    vector<bool> current_v(g0.n, false), current_w(g1.n, false);
     if (incumbent.size() == 0) {
         return false;
     }
     for (int i = 0; i < size; i++) {
-        v_corrente[current[i].v] = true;
-        w_corrente[current[i].w] = true;
+        current_v[current[i].v] = true;
+        current_w[current[i].w] = true;
     }
     for (auto v_vtxpair : incumbent) {
         vector<bool> v_incombente(g0.n, false), v_complessivo(g0.n, false), w_incombente(g1.n, false), w_complessivo(g1.n, false);
@@ -491,43 +410,18 @@ bool controlla_isomorfirmo(vector<vector<VtxPair>>& incumbent, vector<VtxPair>& 
             w_incombente[v_vtxpair[i].w] = true;
         }
         for (int i = 0; i < g0.n; i++) {
-            v_complessivo[i] = v_corrente[i] != v_incombente[i];
+            v_complessivo[i] = current_v[i] != v_incombente[i];
         }
         for (int i = 0; i < g1.n; i++) {
-            w_complessivo[i] = w_corrente[i] != w_incombente[i];
+            w_complessivo[i] = current_w[i] != w_incombente[i];
         }
-        //diventa true se almeno un elemento tra quelli di v_complessivo e v_int_res è vero
-        v_int_res = std::accumulate(v_complessivo.begin(), v_complessivo.end(), v_int_res, or_function); //sbagliato, devo ritornare false se c'è almeno 1 differenza
-        w_int_res = std::accumulate(w_complessivo.begin(), w_complessivo.end(), w_int_res, or_function); //sia in v che in w !!!!
-
-        //v_res = v_res && v_int_res;
-        //w_res = w_res && w_int_res;
-
-        //if (!(v_res && w_res)) {
-        //    return true;
-        //}
+        v_int_res = std::accumulate(v_complessivo.begin(), v_complessivo.end(), v_int_res, or_function); 
+        w_int_res = std::accumulate(w_complessivo.begin(), w_complessivo.end(), w_int_res, or_function); 
         
         if (!(v_int_res && w_int_res)) {
             return true;
         }
-
-        /*if (v_res) {
-            int idx = -1;
-            for (int i = 0; i < g0.n; i++) {
-                if (v_complessivo[i] == true) {
-                    if (idx == -1) {
-                        idx = i;
-                    }
-                    else {
-                        for (int j = 0; j < g0.n; j++) {
-                            if(j!=i && j!=)
-                        }
-                    }
-                }
-            }
-        }*/
     }
-    //deve ritornare true sse sia v_res che w_res sono true
     return false;
 }
 
@@ -581,7 +475,7 @@ void sort_by_size_ascending(std::vector <struct Graph> gi) {
     }
 }
 
-SolutionGraph* write_Graph(const Graph& g0, const Graph& g1, vector<VtxPair>& solution, SolutionGraph * padre) {
+SolutionGraph* write_Graph(const Graph& g0, const Graph& g1, vector<VtxPair>& solution, SolutionGraph * parent) {
 
 #if DEBUG
     cout << "Stampando soluzione di dimensione: " << solution.size() << endl;
@@ -616,7 +510,7 @@ SolutionGraph* write_Graph(const Graph& g0, const Graph& g1, vector<VtxPair>& so
             }
         }
     }
-    sg->padre = padre;
+    sg->parent = parent;
     return sg;
 }
 
@@ -759,43 +653,28 @@ void remove_bidomain(vector<Bidomain>& domains, int idx) {
 }
 
 vector<VtxPair> globalTmp;
-//vector<vector<VtxPair>> *second
 void solve_nopar(const unsigned depth, const Graph & g0, const Graph & g1,
                  AtomicIncumbent & global_incumbent,
                  vector<vector<VtxPair>> & my_incumbent,
                  vector<VtxPair> & current, vector<Bidomain> & domains,
                  vector<int> & left, vector<int> & right, const unsigned int matching_size_goal,
-                 unsigned long long & my_thread_nodes, int profondita, std::atomic<int>& in_attesa)
+                 unsigned long long & my_thread_nodes, int number_solved_graphs, std::atomic<int>& waiting)
 {
-    /*if (stop_due_to_print.at(profondita)->load() && !printed.at(profondita)->load()) {
-        //wait
-        int val = in_attesa++;
-        std::unique_lock<std::mutex> lck(*print_mux.at(profondita));
-        if (val == (arguments.threads - 1)) {
-#if DEBUG
-            cout << "Sblocca printer livello: " << profondita << endl;
-#endif
-            std::unique_lock<std::mutex> priv_lck(*private_mux.at(profondita));
-            private_cv.at(profondita)->notify_all();
-        }
-        print_cv.at(profondita)->wait(lck);
-    }*/
-    if (abort_due_to_timeout.at(profondita)->load())
-        return;
 
     my_thread_nodes++;
 
     if (my_incumbent.front().size() < current.size()) {
-        //cout << "Soluzione attuale di dimensione: " << my_incumbent.front().size() << "\tNuova soluzione: " << current.size() << endl;
         global_incumbent.update(current.size());
         my_incumbent.clear();
         my_incumbent.push_back(current);
     }
     else if (my_incumbent.front().size() == current.size()) {
-        if (!arguments.piu_soluzioni || arguments.piu_soluzioni && !controlla_isomorfirmo(my_incumbent, current, g0, g1, current.size())) {
+        if (!arguments.piu_soluzioni || arguments.piu_soluzioni && !check_isomorphism(my_incumbent, current, g0, g1, current.size())) {
             my_incumbent.push_back(current);
         }
     }
+    if (abort_due_to_timeout.at(number_solved_graphs)->load())
+        return;
 
     unsigned int bound = current.size() + calc_bound(domains);
 
@@ -834,7 +713,7 @@ void solve_nopar(const unsigned depth, const Graph & g0, const Graph & g1,
             auto new_domains = filter_domains(domains, left, right, g0, g1, v, w,
                                               arguments.directed || arguments.edge_labelled);
             current.push_back(VtxPair(v, w));
-            solve_nopar(depth + 1, g0, g1, global_incumbent, my_incumbent, current, new_domains, left, right, matching_size_goal, my_thread_nodes, profondita, in_attesa);
+            solve_nopar(depth + 1, g0, g1, global_incumbent, my_incumbent, current, new_domains, left, right, matching_size_goal, my_thread_nodes, number_solved_graphs, waiting);
             current.pop_back();
         }
         else {
@@ -843,8 +722,10 @@ void solve_nopar(const unsigned depth, const Graph & g0, const Graph & g1,
             if (bd.left_len == 0)
                 remove_bidomain(domains, bd_idx);
 
-            solve_nopar(depth + 1, g0, g1, global_incumbent, my_incumbent, current, domains, left, right, matching_size_goal, my_thread_nodes, profondita, in_attesa);
+            solve_nopar(depth + 1, g0, g1, global_incumbent, my_incumbent, current, domains, left, right, matching_size_goal, my_thread_nodes, number_solved_graphs, waiting);
         }
+        if (abort_due_to_timeout.at(number_solved_graphs)->load())
+            return;
     }
 }
 
@@ -854,22 +735,9 @@ void solve(const unsigned depth, const Graph & g0, const Graph & g1,
            vector<VtxPair> & current, vector<Bidomain> & domains,
            vector<int> & left, vector<int> & right, const unsigned int matching_size_goal,
            const Position & position, HelpMe & help_me, unsigned long long & my_thread_nodes,
-           int profondita, std::atomic<int>& in_attesa)
+           int number_solved_graphs, std::atomic<int>& waiting)
 {
-    /*if (stop_due_to_print.at(profondita)->load() && !printed.at(profondita)->load()) {
-        //wait
-        int val = in_attesa++;
-        std::unique_lock<std::mutex> lck(*print_mux.at(profondita));
-        if (val == (arguments.threads - 1)) {
-#if DEBUG
-            cout << "Sblocca printer livello: " << profondita << endl;
-#endif
-            std::unique_lock<std::mutex> priv_lck(*private_mux.at(profondita));
-            private_cv.at(profondita)->notify_all();
-        }
-        print_cv.at(profondita)->wait(lck);
-    }*/
-    if (abort_due_to_timeout.at(profondita)->load())
+    if (abort_due_to_timeout.at(number_solved_graphs)->load())
         return;
 
     my_thread_nodes++;
@@ -885,7 +753,7 @@ void solve(const unsigned depth, const Graph & g0, const Graph & g1,
         second->push_back(current);
     }
     else if (second->front().size() == current.size()) {
-        if (!arguments.piu_soluzioni || arguments.piu_soluzioni && !controlla_isomorfirmo(*second, current, g0, g1, current.size())) {
+        if (!arguments.piu_soluzioni || arguments.piu_soluzioni && !check_isomorphism(*second, current, g0, g1, current.size())) {
             second->push_back(current);
         }
     }
@@ -895,18 +763,7 @@ void solve(const unsigned depth, const Graph & g0, const Graph & g1,
         return;
 
     if (bound == global_incumbent.value && second->size() >= arguments.max_number_solutions) {
-        /*if (arguments.piu_soluzioni) {
-            vector<vector<VtxPair>> tmp;
-            for (auto v_vtxpair : *second) {
-                if (!controlla_isomorfirmo(tmp, v_vtxpair, g0, g1, v_vtxpair.size())) {
-                    tmp.push_back(v_vtxpair);
-                }
-            }
-            *second = tmp;
-        }
-        if (second->size() >= arguments.max_number_solutions) {*/
             return;
-        //}
     }
 
     if (arguments.big_first && global_incumbent.value == matching_size_goal)
@@ -923,7 +780,7 @@ void solve(const unsigned depth, const Graph & g0, const Graph & g1,
 
     // Version of the loop used by helpers
     std::function<void (unsigned long long &)> helper_function = [&shared_i, &g0, &g1, &global_incumbent, &per_thread_incumbents, &position, &depth,
-            i_end, matching_size_goal, current, domains, left, right, &help_me, profondita, &in_attesa] (unsigned long long & help_thread_nodes) {
+            i_end, matching_size_goal, current, domains, left, right, &help_me, number_solved_graphs, &waiting] (unsigned long long & help_thread_nodes) {
         int which_i_should_i_run_next = shared_i++;
 
         if (which_i_should_i_run_next >= i_end)
@@ -960,12 +817,12 @@ void solve(const unsigned depth, const Graph & g0, const Graph & g1,
                                                       arguments.directed || arguments.edge_labelled);
                     help_current.push_back(VtxPair(help_v, help_w));
                     if (depth > split_levels) {
-                        solve_nopar(depth + 1, g0, g1, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, help_current, new_domains, help_left, help_right, matching_size_goal, help_thread_nodes, profondita, in_attesa);
+                        solve_nopar(depth + 1, g0, g1, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, help_current, new_domains, help_left, help_right, matching_size_goal, help_thread_nodes, number_solved_graphs, waiting);
                     }
                     else {
                         auto new_position = position;
                         new_position.add(depth, i + 1);
-                        solve(depth + 1, g0, g1, global_incumbent, per_thread_incumbents, help_current, new_domains, help_left, help_right, matching_size_goal, new_position, help_me, help_thread_nodes, profondita, in_attesa);
+                        solve(depth + 1, g0, g1, global_incumbent, per_thread_incumbents, help_current, new_domains, help_left, help_right, matching_size_goal, new_position, help_me, help_thread_nodes, number_solved_graphs, waiting);
                     }
                     help_current.pop_back();
                 }
@@ -979,15 +836,17 @@ void solve(const unsigned depth, const Graph & g0, const Graph & g1,
                 if (i == which_i_should_i_run_next) {
                     which_i_should_i_run_next = shared_i++;
                     if (depth > split_levels) {
-                        solve_nopar(depth + 1, g0, g1, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, help_current, help_domains, help_left, help_right, matching_size_goal, help_thread_nodes, profondita, in_attesa);
+                        solve_nopar(depth + 1, g0, g1, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, help_current, help_domains, help_left, help_right, matching_size_goal, help_thread_nodes, number_solved_graphs, waiting);
                     }
                     else {
                         auto new_position = position;
                         new_position.add(depth, i + 1);
-                        solve(depth + 1, g0, g1, global_incumbent, per_thread_incumbents, help_current, help_domains, help_left, help_right, matching_size_goal, new_position, help_me, help_thread_nodes, profondita, in_attesa);
+                        solve(depth + 1, g0, g1, global_incumbent, per_thread_incumbents, help_current, help_domains, help_left, help_right, matching_size_goal, new_position, help_me, help_thread_nodes, number_solved_graphs, waiting);
                     }
                 }
             }
+            if (abort_due_to_timeout.at(number_solved_graphs)->load())
+                return;
         }
     };
 
@@ -1015,12 +874,12 @@ void solve(const unsigned depth, const Graph & g0, const Graph & g1,
                                                       arguments.directed || arguments.edge_labelled);
                     current.push_back(VtxPair(v, w));
                     if (depth > split_levels) {
-                        solve_nopar(depth + 1, g0, g1, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, current, new_domains, left, right, matching_size_goal, main_thread_nodes, profondita, in_attesa);
+                        solve_nopar(depth + 1, g0, g1, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, current, new_domains, left, right, matching_size_goal, main_thread_nodes, number_solved_graphs, waiting);
                     }
                     else {
                         auto new_position = position;
                         new_position.add(depth, i + 1);
-                        solve(depth + 1, g0, g1, global_incumbent, per_thread_incumbents, current, new_domains, left, right, matching_size_goal, new_position, help_me, main_thread_nodes, profondita, in_attesa);
+                        solve(depth + 1, g0, g1, global_incumbent, per_thread_incumbents, current, new_domains, left, right, matching_size_goal, new_position, help_me, main_thread_nodes, number_solved_graphs, waiting);
                     }
                     current.pop_back();
                 }
@@ -1034,15 +893,17 @@ void solve(const unsigned depth, const Graph & g0, const Graph & g1,
                 if (i == which_i_should_i_run_next) {
                     which_i_should_i_run_next = shared_i++;
                     if (depth > split_levels) {
-                        solve_nopar(depth + 1, g0, g1, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, current, domains, left, right, matching_size_goal, main_thread_nodes, profondita, in_attesa);
+                        solve_nopar(depth + 1, g0, g1, global_incumbent, per_thread_incumbents.find(std::this_thread::get_id())->second, current, domains, left, right, matching_size_goal, main_thread_nodes, number_solved_graphs, waiting);
                     }
                     else {
                         auto new_position = position;
                         new_position.add(depth, i + 1);
-                        solve(depth + 1, g0, g1, global_incumbent, per_thread_incumbents, current, domains, left, right, matching_size_goal, new_position, help_me, main_thread_nodes, profondita, in_attesa);
+                        solve(depth + 1, g0, g1, global_incumbent, per_thread_incumbents, current, domains, left, right, matching_size_goal, new_position, help_me, main_thread_nodes, number_solved_graphs, waiting);
                     }
                 }
             }
+            if (abort_due_to_timeout.at(number_solved_graphs)->load())
+                return;
         }
     };
 
@@ -1052,7 +913,7 @@ void solve(const unsigned depth, const Graph & g0, const Graph & g1,
         main_function(my_thread_nodes);
 }
 
-void collect_results(PerThreadIncumbents per_thread_incumbents) { //nel caso di più grafi mi serve anche sapere quale sia la più grande soluzione tra gli altri
+void collect_results(PerThreadIncumbents per_thread_incumbents) {
     vector<VtxPair> max;
     for (auto& i : per_thread_incumbents) {
         for (auto& j : i.second) {
@@ -1061,8 +922,6 @@ void collect_results(PerThreadIncumbents per_thread_incumbents) { //nel caso di 
             }
         }
     }
-    // print j in posizione arguments.max_number_solutions
-    // signal queue
     return;
 }
 
@@ -1079,7 +938,7 @@ vector<VtxPair>* find_best_incumbent(PerThreadIncumbents& per_thread_incumbents)
     return ret_val;
 }
 
-std::pair<vector<vector<VtxPair>>, unsigned long long> mcs(const Graph & g0, const Graph & g1, SolutionGraph *padre, int max_size_found, int profondita, SecureQueue<SolutionGraph *>& doveScrivere, std::chrono::steady_clock::time_point now) {
+std::pair<vector<vector<VtxPair>>, unsigned long long> mcs(const Graph & g0, const Graph & g1, SolutionGraph *parent, int max_size_found, int depth, SecureQueue<SolutionGraph *>& where_to_write) {
     vector<int> left;  // the buffer of vertex indices for the left partitions
     vector<int> right;  // the buffer of vertex indices for the right partitions
 
@@ -1131,53 +990,9 @@ std::pair<vector<vector<VtxPair>>, unsigned long long> mcs(const Graph & g0, con
             for (auto & t : help_me.threads)
                 per_thread_incumbents.emplace(t.get_id(), vector<vector<VtxPair>>());
             std::atomic<int> in_attesa(0);
-            //start wait for print thread
-            /*if (0 != arguments.timeout) {
-                *print_thread.at(profondita) = std::thread([&] {
-                    stop_due_to_print.at(profondita)->store(false);
-#if DEBUG
-                    cout << "Attivato thread: " << std::this_thread::get_id() << endl;
-#endif
-                    auto print_time = now;
-                    std::mutex timeout_mutex;
-                    std::condition_variable timeout_cv;
-                    print_time += (std::chrono::seconds(arguments.timeout / (arguments.n_files - 1)));
 
-                    // Sleep until either we've reached the time to print,
-                    //      or we've finished all the work.
-                    std::unique_lock<std::mutex> guard(timeout_mutex);
-                    while (!stop_due_to_print.at(profondita)->load()) {
-                        if (std::cv_status::timeout == timeout_cv.wait_until(guard, print_time)) {
-                            // We've woken up, and it's due to a timeout.
-                            //get mux
-                            std::unique_lock<std::mutex> lck(*private_mux.at(profondita));
-#if DEBUG
-                            cout << "Printer pronto livello:  " << profondita << endl;
-#endif
-                            //signal
-                            stop_due_to_print.at(profondita)->store(true);
-                            //printing = true;
-                            //wait
-                            private_cv.at(profondita)->wait(lck);
-                            //get results
-                            vector<VtxPair>* best_incumbent = find_best_incumbent(per_thread_incumbents);
-                            if (best_incumbent == nullptr || (sol_mat.at(profondita).size() > 0 && sol_mat.at(profondita).at(0)->g->n > best_incumbent->size())) {
-                                sol_intermedie.push_back(copy_solution(sol_mat.at(profondita).at(0)));
-                                doveScrivere.push(sol_intermedie.back());
-                            }
-                            else if (best_incumbent != nullptr) {
-                                sol_intermedie.push_back(write_Graph(g0, g1, *best_incumbent, padre));
-                                doveScrivere.push(sol_intermedie.back());
-                            }
-                            printed.at(profondita)->store(true);
-                            std::unique_lock<std::mutex> guard(*print_mux.at(profondita));
-                            print_cv.at(profondita)->notify_all();
-                            break;
-                        }
-                    }
-                });
-            }*/
-            solve(0, g0, g1, global_incumbent, per_thread_incumbents, current, domains_copy, left_copy, right_copy, goal, position, help_me, global_nodes, profondita, in_attesa);
+            solve(0, g0, g1, global_incumbent, per_thread_incumbents, current, domains_copy, left_copy, right_copy, goal, position, help_me, global_nodes, depth, in_attesa);
+            
             help_me.kill_workers();
             for (auto & n : help_me.nodes) {
                 global_nodes += n;
@@ -1194,13 +1009,13 @@ std::pair<vector<vector<VtxPair>>, unsigned long long> mcs(const Graph & g0, con
             for (auto& i : per_thread_incumbents) {
                 for (auto& j : i.second) {
                     if (j.size() == max) {
-                        if (incumbent.size() < arguments.max_number_solutions && controlla_isomorfirmo(incumbent, j, g0, g1, max)) {
+                        if (incumbent.size() < arguments.max_number_solutions && check_isomorphism(incumbent, j, g0, g1, max)) {
                             incumbent.push_back(j);
                         }
                     }
                 }
             }
-            if (global_incumbent.value == goal || abort_due_to_timeout.at(profondita)) break;
+            if (global_incumbent.value == goal || abort_due_to_timeout.at(depth)) break;
             if (!arguments.quiet) cout << "Upper bound: " << goal-1 << std::endl;
         }
 
@@ -1212,58 +1027,11 @@ std::pair<vector<vector<VtxPair>>, unsigned long long> mcs(const Graph & g0, con
         HelpMe help_me(arguments.threads - 1);
         for (auto &t : help_me.threads)
             per_thread_incumbents.emplace(t.get_id(), vector<vector<VtxPair>>());
-        
-        //start wait for print thread
-        /*if (0 != arguments.timeout) {
-            *print_thread.at(profondita) = std::thread([&] {
-                stop_due_to_print.at(profondita)->store(false);
-#if DEBUG
-                cout << "Attivato thread: " << std::this_thread::get_id() << endl;
-#endif
-                auto print_time = now;
-                std::mutex timeout_mutex;
-                std::condition_variable timeout_cv;
-                print_time += (std::chrono::seconds(arguments.timeout / (arguments.n_files - 1)));
-
-                // Sleep until either we've reached the time to print,
-                //     or we've finished all the work.
-                std::unique_lock<std::mutex> guard(timeout_mutex);
-                while (!stop_due_to_print.at(profondita)->load()) {
-                    if (std::cv_status::timeout == timeout_cv.wait_until(guard, print_time)) {
-                        // We've woken up, and it's due to a timeout.
-                        //get mux
-                        std::unique_lock<std::mutex> lck(*private_mux.at(profondita));
-#if DEBUG
-                        cout << "Printer pronto livello:  " << profondita << endl;
-#endif
-                        //signal
-                        stop_due_to_print.at(profondita)->store(true);
-                        //printing = true;
-                        //wait
-                        private_cv.at(profondita)->wait(lck);
-                        //get results
-                        vector<VtxPair>* best_incumbent = find_best_incumbent(per_thread_incumbents);
-                        if (best_incumbent == nullptr || (sol_mat.at(profondita).size() > 0 && sol_mat.at(profondita).at(0)->g->n > best_incumbent->size())) {
-                            sol_intermedie.push_back(copy_solution(sol_mat.at(profondita).at(0)));
-                            doveScrivere.push(sol_intermedie.back());
-                        }
-                        else if (best_incumbent != nullptr) {
-                            sol_intermedie.push_back(write_Graph(g0, g1, *best_incumbent, padre));
-                            doveScrivere.push(sol_intermedie.back());
-                        }
-                        //printed.at(profondita)->store(true);
-                        std::unique_lock<std::mutex> guard(*print_mux.at(profondita));
-                        print_cv.at(profondita)->notify_all();
-                        break;
-                    }
-                }
-            });
-        }*/
 
         std::atomic<int> in_attesa(0);
-        solve(0, g0, g1, global_incumbent, per_thread_incumbents, current, domains, left, right, 1 /*max_size_found*/, position, help_me,
-              global_nodes, profondita, in_attesa);
-        //std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        solve(0, g0, g1, global_incumbent, per_thread_incumbents, current, domains, left, right, 0, position, help_me,
+              global_nodes, depth, in_attesa);
+              
         help_me.kill_workers();
         for (auto &n : help_me.nodes)
             global_nodes += n;
@@ -1279,30 +1047,18 @@ std::pair<vector<vector<VtxPair>>, unsigned long long> mcs(const Graph & g0, con
         for (auto &i : per_thread_incumbents) {
             for (auto &j : i.second) {
                 if (j.size() == max) {
-                    if (incumbent.size() < arguments.max_number_solutions && !controlla_isomorfirmo(incumbent, j, g0, g1, max)) {
+                    if (incumbent.size() < arguments.max_number_solutions && !check_isomorphism(incumbent, j, g0, g1, max)) {
                         incumbent.push_back(j);
                     }
                 }
             }
-        }
-
-        if (print_thread.at(profondita)->joinable()) {
-            {
-                std::unique_lock<std::mutex> guard(*private_mux.at(profondita));
-                //stop_due_to_print.at(profondita)->store(true);
-                private_cv.at(profondita)->notify_all();
-            }
-#if DEBUG
-            cout << "Join di: " << print_thread.at(profondita)->get_id() << endl;
-#endif
-            print_thread.at(profondita)->join();
         }
     }
 
     return { incumbent, global_nodes };
 }
 
-std::pair<vector<vector<VtxPair>>, unsigned long long int> find_mcs_solution(Graph &g0, Graph &g1, SolutionGraph* padre, int max_size_found, int profondita, SecureQueue<SolutionGraph *>& doveScrivere, std::chrono::steady_clock::time_point now) {
+std::pair<vector<vector<VtxPair>>, unsigned long long int> find_mcs_solution(Graph &g0, Graph &g1, SolutionGraph* parent, int max_size_found, int depth, SecureQueue<SolutionGraph *>& where_to_write) {
     vector<int> g0_deg = calculate_degrees(g0);
     vector<int> g1_deg = calculate_degrees(g1);
 
@@ -1328,7 +1084,7 @@ std::pair<vector<vector<VtxPair>>, unsigned long long int> find_mcs_solution(Gra
     struct Graph g0_sorted = induced_subgraph(g0, vv0);
     struct Graph g1_sorted = induced_subgraph(g1, vv1);
 
-    std::pair<vector<vector<VtxPair>>, unsigned long long> solution = mcs(g0_sorted, g1_sorted, padre, max_size_found, profondita, doveScrivere, now);
+    std::pair<vector<vector<VtxPair>>, unsigned long long> solution = mcs(g0_sorted, g1_sorted, parent, max_size_found, depth, where_to_write);
 
     for (auto& sol : solution.first) {
 
@@ -1346,42 +1102,40 @@ int simplePrintResults(vector<Graph> & gi) {
 
     for (int i = arguments.n_files - 2; i >= 0; i--) {
         if (sol_mat.at(i).size() == 0) {
-            fail("No soluzione!");
+            fail("No solution!");
         }
     }
 
     vector<int> vrt(arguments.n_files);
-    int index = 0;
     int solution_depth = arguments.n_files - 1;
     int solution_size = sol_mat.at(solution_depth - 1).at(0)->g->n;
     SolutionGraph* sg = sol_mat.at(solution_depth - 1).at(0);
-    int profondita;
-    int indice;
+    int depth;
+    int index;
 
     cout << "Solution size " << solution_size << std::endl;
 
     for (int i = 0; i < sg->map_g1.size(); i++) {
-        profondita = 0;
+        depth = 0;
         vrt.at(solution_depth) = sg->map_g1.at(i);
         for (int j = 0; j < sg->map_g0.size(); j++) {
             if (vrt.at(solution_depth) == sg->map_g1.at(j)) {
-                indice = j;//sg->map_g0.at(j);
+                index = j;
                 break;
             }
         }
-        while (sg->padre != nullptr) {
-            profondita++;
-            //indice = -1;
+        while (sg->parent != nullptr) {
+            depth++;
             for (int j = 0; j < sg->map_g0.size(); j++) {
-                if (vrt.at(solution_depth - profondita + 1) == sg->map_g1.at(j)) {
-                    indice = sg->map_g0.at(j);
+                if (vrt.at(solution_depth - depth + 1) == sg->map_g1.at(j)) {
+                    index = sg->map_g0.at(j);
                     break;
                 }
             }
-            sg = sg->padre;
-            vrt.at(solution_depth-profondita) = sg->map_g1.at(indice);
+            sg = sg->parent;
+            vrt.at(solution_depth-depth) = sg->map_g1.at(index);
         }
-        vrt.at(0) = sg->map_g0.at(indice);
+        vrt.at(0) = sg->map_g0.at(index);
 
         cout << "(" << vrt[0];
         for (int j = 1; j < arguments.n_files; j++) {
@@ -1396,24 +1150,24 @@ int simplePrintResults(vector<Graph> & gi) {
     return solution_size;
 }
 
-struct GruppoSoluzioni {
+struct SolutionsSet {
     int dim_sol_max = 0;
     int num_graph_dim_max = 0;
-    //vector<vector<VtxPair>> soluzioni;
     vector<int> soluzioni;
-    GruppoSoluzioni () {}
-    GruppoSoluzioni (int dim, int num, vector<int> sol) {
+    SolutionsSet () {}
+    SolutionsSet (int dim, int num, vector<int> sol) {
         dim_sol_max = dim;
         num_graph_dim_max = num;
         soluzioni = sol;
     }
 };
-//questa funzione chiama find_mcs_solution e butta tutte le soluzioni di dimensione non massima o inferiori a max_size_found
-//per poi ritornare una coppia dimensione_soluzione_massima_trovata, numero_grafi_dim_massima
-void try_solve (Graph & firstElement, Graph & secondElement, SolutionGraph *sol_padre, int profondita, int& max_size_found, SecureQueue<SolutionGraph *>& doveScrivere, std::chrono::steady_clock::time_point now) {
+
+// this function calls find_mcs_solution and discards all the solutions of non max size or lower than a max_size_found
+// then returns a pair dimension_max_sol_found, number_max_size_graphs
+void try_solve (Graph & firstElement, Graph & secondElement, SolutionGraph *parent_sol, int depth, int& max_size_found, SecureQueue<SolutionGraph *>& where_to_write) {
     
     
-    std::pair<vector<vector<VtxPair>>, unsigned long long> solutions = find_mcs_solution(firstElement, secondElement, sol_padre, max_size_found, profondita, doveScrivere, now);
+    std::pair<vector<vector<VtxPair>>, unsigned long long> solutions = find_mcs_solution(firstElement, secondElement, parent_sol, max_size_found, depth, where_to_write);
     int i = 0, size;
     std::string filename;
     size = (solutions.first.size() > 0) ? solutions.first.at(0).size() : 0;
@@ -1423,25 +1177,25 @@ void try_solve (Graph & firstElement, Graph & secondElement, SolutionGraph *sol_
 #endif
 
     if (size > max_size_found) {
-        for (auto sol : sol_mat.at(profondita)) {
+        for (auto sol : sol_mat.at(depth)) {
             delete sol;
         }
-        sol_mat.at(profondita).clear();
+        sol_mat.at(depth).clear();
         for (vector<VtxPair>& sol : solutions.first) {
             if (!check_sol(firstElement, secondElement, sol)) {
                 fail("*** Error: Invalid solution\n");
             }
-            //controllare l'isomorfismo con il g1 delle precedenti soluzioni
-            sol_mat.at(profondita).push_back(write_Graph(firstElement, secondElement, sol, sol_padre));
+            //check if it is isomorphic to a previous solution
+            sol_mat.at(depth).push_back(write_Graph(firstElement, secondElement, sol, parent_sol));
         }
         max_size_found = size;
     }
     else if (size == max_size_found) {
-        for (int i = 0; i < solutions.first.size() && sol_mat.at(profondita).size() < arguments.max_number_solutions; i++) {
+        for (int i = 0; i < solutions.first.size() && sol_mat.at(depth).size() < arguments.max_number_solutions; i++) {
             if (!check_sol(firstElement, secondElement, solutions.first.at(i))) {
                 fail("*** Error: Invalid solution\n");
             }
-            sol_mat.at(profondita).push_back(write_Graph(firstElement, secondElement, solutions.first.at(i), sol_padre));
+            sol_mat.at(depth).push_back(write_Graph(firstElement, secondElement, solutions.first.at(i), parent_sol));
         }
     }
 }
@@ -1453,10 +1207,9 @@ auto floatToDuration(const float time_s)
     return round<nanoseconds>(fsec{time_s});
 }
 
-void aspetta_soluzione(SecureQueue<SolutionGraph *>& doveAttendere, SecureQueue<SolutionGraph*>& doveScrivere, int profondita, Graph& g1) {
-    SolutionGraph* indice;
-    abort_due_to_timeout.at(profondita)->store(false);
-    //stop_due_to_print.at(profondita)->store(false); 
+void wait_solution(SecureQueue<SolutionGraph *>& where_to_wait, SecureQueue<SolutionGraph*>& where_to_write, int depth, Graph& g1) {
+    SolutionGraph* index;
+    abort_due_to_timeout.at(depth)->store(false);
     
     bool aborted = false;
     bool printing = false;
@@ -1467,8 +1220,8 @@ void aspetta_soluzione(SecureQueue<SolutionGraph *>& doveAttendere, SecureQueue<
     std::condition_variable timeout_cv;
     float timeout = arguments.timeout;
 
-    if (profondita != arguments.n_files - 2) {
-        for (int i = 0 ; i < profondita + 1; i++) { // we need to divide it one more time than depth
+    if (depth != arguments.n_files - 2) {
+        for (int i = 0 ; i < depth + 1; i++) { // we need to divide it one more time than depth
             timeout = timeout/2;
         }
         timeout = (float) arguments.timeout - timeout;
@@ -1481,7 +1234,7 @@ void aspetta_soluzione(SecureQueue<SolutionGraph *>& doveAttendere, SecureQueue<
                 /* Sleep until either we've reached the time limit,
                  * or we've finished all the work. */
                 std::unique_lock<std::mutex> guard(timeout_mutex);
-                while (!abort_due_to_timeout.at(profondita)->load()) {
+                while (!abort_due_to_timeout.at(depth)->load()) {
                     if (std::cv_status::timeout == timeout_cv.wait_until(guard, abort_time)) {
                         /* We've woken up, and it's due to a timeout. */
                         aborted = true;
@@ -1489,28 +1242,28 @@ void aspetta_soluzione(SecureQueue<SolutionGraph *>& doveAttendere, SecureQueue<
                     }
                 }
             }
-            abort_due_to_timeout.at(profondita)->store(true);
+            abort_due_to_timeout.at(depth)->store(true);
         });
     }
 
     int dim_sol_max = 0;
-    int grafo_scelto = -1;
-    while ((indice = doveAttendere.pop()) != nullptr && !aborted) {
+    int selected_graph = -1;
+    while ((index = where_to_wait.pop()) != nullptr && !aborted) {
 
-        struct Graph* tmp = indice->g;
-        try_solve(*tmp, g1, indice, profondita, dim_sol_max, doveScrivere, now);
+        struct Graph* tmp = index->g;
+        try_solve(*tmp, g1, index, depth, dim_sol_max, where_to_write);
 
     }
 
 #if DEBUG
-    cout << sol_mat.at(profondita).size() << " soluzioni livello " << profondita << " di dimensione " << sol_mat.at(profondita).at(0)->g->n << endl;
+    cout << sol_mat.at(depth).size() << " solutions depth " << depth << " of size " << sol_mat.at(depth).at(0)->g->n << endl;
 
     cout << endl << endl;
 #endif
-    for (int i = 0; i < sol_mat.at(profondita).size(); i++) {
-        doveScrivere.push(sol_mat.at(profondita).at(i));
+    for (int i = 0; i < sol_mat.at(depth).size(); i++) {
+        where_to_write.push(sol_mat.at(depth).at(i));
     }
-    doveScrivere.push(nullptr);
+    where_to_write.push(nullptr);
 
     if (aborted)
         cout << "TIMEOUT" << endl;
@@ -1519,7 +1272,7 @@ void aspetta_soluzione(SecureQueue<SolutionGraph *>& doveAttendere, SecureQueue<
     if (timeout_thread.joinable()) {
         {
             std::unique_lock<std::mutex> guard(timeout_mutex);
-            abort_due_to_timeout.at(profondita)->store(true);
+            abort_due_to_timeout.at(depth)->store(true);
             timeout_cv.notify_all();
         }
         timeout_thread.join();
@@ -1529,13 +1282,8 @@ void aspetta_soluzione(SecureQueue<SolutionGraph *>& doveAttendere, SecureQueue<
 int main(int argc, char** argv) {
 
     set_default_arguments();
-
-#ifdef _WIN32
-    arg_parse(argc, argv);
-#else
     argp_parse(&argp, argc, argv, 0, 0, 0);
     arguments.n_files = arguments.arg_num - 1;
-#endif // _WIN32
 
     char format = arguments.dimacs ? 'D' : arguments.lad ? 'L' : 'B';
     std::vector<struct Graph> gi (arguments.n_files, 0);
@@ -1544,22 +1292,11 @@ int main(int argc, char** argv) {
         gi.at(i).file_name = arguments.filenames.at(i);
     }
 
-    //istanzia il thread di timeout, lo fa partire più tardi
+    // instance timeout thread, it will be started later
     abort_due_to_timeout.resize(arguments.n_files - 1);
     for (auto& atom : abort_due_to_timeout) {
         atom = std::make_unique<std::atomic<bool>>(false);   // init atomic ints to 0
     }
-    /*stop_due_to_print.resize(arguments.n_files - 1);
-    for (auto& atom : stop_due_to_print) {
-        atom = std::make_unique<std::atomic<bool>>(false);   // init atomic ints to 0
-    }
-    printed.resize(arguments.n_files - 1);
-    for (auto& atom : printed) {
-        atom = std::make_unique<std::atomic<bool>>(false);
-    }*/
-
-    /*
-    double begin = clock ();*/
     auto start = steady_clock::now();
     
 
@@ -1573,33 +1310,17 @@ int main(int argc, char** argv) {
 
     private_mux.resize(arguments.n_files-1);
     private_cv.resize(arguments.n_files-1);
-    print_mux.resize(arguments.n_files-1);
-    print_cv.resize(arguments.n_files-1);
-    print_thread.resize(arguments.n_files-1);
     for (auto& atom : private_mux) {
         atom = std::make_unique<std::mutex>();   // init mutex
     }
     for (auto& atom : private_cv) {
         atom = std::make_unique<std::condition_variable>();   // init condition_variable
     }
-    for (auto& atom : print_mux) {
-        atom = std::make_unique<std::mutex>();   // init mutex
-    }
-    for (auto& atom : print_cv) {
-        atom = std::make_unique<std::condition_variable>();   // init condition_variable
-    }
-    for (auto& atom : print_thread) {
-        atom = std::make_unique<std::thread>();   // init thread per stampa
-    }
 
-    //vector<vector<VtxPair>> coppieVertici (arguments.n_files-1);
     vector<SecureQueue<SolutionGraph*>> sq(arguments.n_files - 1);
     vector<std::thread> t; 
-    //t.reserve(arguments.n_files - 2);
     for (int i = 0; i < arguments.n_files - 2; i++) {
-        //t.emplace_back(std::thread(&aspetta_soluzione, sq[i + 1], sq[i + 2], i + 1, gi[i + 2], coppieVertici));
-        t.emplace_back(std::thread([&sq, &gi, i] { aspetta_soluzione(sq[i], sq[i + 1], i + 1, gi[i + 2]); }));
-        //aspetta_soluzione(sq[i], sq[i + 1], i + 1, gi[i + 2]);
+        t.emplace_back(std::thread([&sq, &gi, i] { wait_solution(sq[i], sq[i + 1], i + 1, gi[i + 2]); }));
     }
 
     bool aborted = false;
@@ -1633,11 +1354,11 @@ int main(int argc, char** argv) {
     }
 
     int max_size_found = 0;
-    try_solve(gi[0], gi[1], nullptr, 0, max_size_found, sq.at(0), now); //salva risultati in sol_mat
+    try_solve(gi[0], gi[1], nullptr, 0, max_size_found, sq.at(0)); //store solutions in sol_mat
 
 
 #if DEBUG
-    cout << sol_mat.at(0).size() << " soluzioni livello 0 di dimensione " << sol_mat.at(0).at(0)->g->n << endl;
+    cout << sol_mat.at(0).size() << " solutions depth 0 of size " << sol_mat.at(0).at(0)->g->n << endl;
 
     cout << endl << endl;
 #endif
@@ -1666,7 +1387,6 @@ int main(int argc, char** argv) {
 
     int sol_size = simplePrintResults(gi);
     
-    /**/
     auto stop = steady_clock::now();
     auto time_elapsed = duration_cast<milliseconds>(stop - start).count();
     
@@ -1680,22 +1400,5 @@ int main(int argc, char** argv) {
     for (auto sol : sol_intermedie) {
         delete sol;
     }
-
-    /*
-    double end = clock ();
-
-    cout << "Solution size " << solution.first.size() << std::endl;
-    for (int i=0; i<g0.n; i++)
-        for (unsigned int j=0; j<solution.first.size(); j++)
-            if (solution.first[j].v == i)
-                cout << "(" << solution.first[j].v << " -> " << solution.first[j].w << ") ";
-    cout << std::endl;
-
-    cout << "Nodes:                      " << solution.second << endl;
-    cout << "CPU time (ms):              " << time_elapsed << endl;
-
-    fprintf (stdout, "Wall-Clock Time = %f sec\n", (double)(end-begin)/CLOCKS_PER_SEC);*/
-
-
 }
 
