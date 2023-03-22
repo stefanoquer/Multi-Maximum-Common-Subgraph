@@ -1132,7 +1132,7 @@ std::pair<vector<vector<VtxPair>>, unsigned long long> mcs(const Graph & g0, con
                 per_thread_incumbents.emplace(t.get_id(), vector<vector<VtxPair>>());
             std::atomic<int> in_attesa(0);
             //start wait for print thread
-            if (0 != arguments.timeout) {
+            /*if (0 != arguments.timeout) {
                 *print_thread.at(profondita) = std::thread([&] {
                     stop_due_to_print.at(profondita)->store(false);
 #if DEBUG
@@ -1143,12 +1143,12 @@ std::pair<vector<vector<VtxPair>>, unsigned long long> mcs(const Graph & g0, con
                     std::condition_variable timeout_cv;
                     print_time += (std::chrono::seconds(arguments.timeout / (arguments.n_files - 1)));
 
-                    /* Sleep until either we've reached the time to print,
-                        * or we've finished all the work. */
+                    // Sleep until either we've reached the time to print,
+                    //      or we've finished all the work.
                     std::unique_lock<std::mutex> guard(timeout_mutex);
                     while (!stop_due_to_print.at(profondita)->load()) {
                         if (std::cv_status::timeout == timeout_cv.wait_until(guard, print_time)) {
-                            /* We've woken up, and it's due to a timeout. */
+                            // We've woken up, and it's due to a timeout.
                             //get mux
                             std::unique_lock<std::mutex> lck(*private_mux.at(profondita));
 #if DEBUG
@@ -1176,7 +1176,7 @@ std::pair<vector<vector<VtxPair>>, unsigned long long> mcs(const Graph & g0, con
                         }
                     }
                 });
-            }
+            }*/
             solve(0, g0, g1, global_incumbent, per_thread_incumbents, current, domains_copy, left_copy, right_copy, goal, position, help_me, global_nodes, profondita, in_attesa);
             help_me.kill_workers();
             for (auto & n : help_me.nodes) {
