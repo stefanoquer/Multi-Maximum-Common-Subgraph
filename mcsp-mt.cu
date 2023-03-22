@@ -61,7 +61,7 @@ static struct argp_option options[] = {
     {"timeout", 't', "timeout", 0, "Specify a timeout (seconds)"},
     {"threads", 'T', "threads", 0, "Specify how many threads to use"},
     { "debug", 'D', 0, 0, "Print more data for debug" },
-    { "buffer", 'B', "dimensione_buffer", 0, "Dimensione del buffer" },
+    { "buffer", 'B', "buffer_size", 0, "Size of the buffer, more RAM for better performances (on the GPU side)" },
     { 0 }
 };
 
@@ -81,7 +81,7 @@ static struct {
     int threads;
     int arg_num;
     bool debug;
-    int dimensione_buffer;
+    int buffer_size;
 } arguments;
 
 static std::atomic<bool> abort_due_to_timeout;
@@ -100,7 +100,7 @@ void set_default_arguments() {
     arguments.threads = std::thread::hardware_concurrency();
     arguments.arg_num = 0;
     arguments.debug = false;
-    arguments.dimensione_buffer = 1;
+    arguments.buffer_size = 1;
 }
 
 static error_t parse_opt (int key, char *arg, struct argp_state *state) {
@@ -154,7 +154,7 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
 	    arguments.debug = true;
 	    break;
 	case 'B':
-	    arguments.dimensione_buffer = std::stoi(arg);
+	    arguments.buffer_size = std::stoi(arg);
 	    break;
         case ARGP_KEY_ARG:
             if (arguments.arg_num == 0) {
@@ -634,9 +634,7 @@ void launch_kernel(uchar *args, int n_threads, uchar a_size, uint sol_size, uint
 	checkCudaErrors(cudaFree(device_args_i));
 	checkCudaErrors(cudaFree(glo_sh_inc));
 
-    cout << "Inc_pos = " << *inc_pos << endl;
 	for(int b = 0; b < N_BLOCKS; b++){
-        //cout << "th_" << b << " found solution: " << host_solutions[b*max_sol_size] << endl;
 		if (*inc_pos < host_solutions[b*max_sol_size]) {
 			*inc_pos = host_solutions[b*max_sol_size];
 			for (int i = 1; i < *inc_pos + 1; i++) {
@@ -680,9 +678,9 @@ struct wrapperData  {
 	uint bound_size;
 };
 
-vector<Data> argomenti_globali;
-vector<wrapperData> argomenti_i_globali;
-vector<vector<uchar>> soluzione_globale;
+vector<Data> global_arguments;
+vector<wrapperData> global_arguments_i;
+vector<vector<uchar>> global_solution;
 
 void *safe_realloc(void* old, uint new_size){
 	void *tmp = realloc(old, new_size);
@@ -697,7 +695,7 @@ bool compareData(wrapperData d1, wrapperData d2)
 
 void clean_arguments_v2(vector<Data>& arguments_to_clean, vector<wrapperData>& arguments_to_clean_i, uchar inc_pos, uint& n_args, int& n_threads) {
 	if(arguments.debug)
-		cout << "Inizio pulizia ... " << n_threads << " thread già eseguiti, " << +inc_pos << " dimensione trovata" << endl;
+		cout << "Start cleaning ... " << n_threads << " thread already executed, " << +inc_pos << " size found" << endl;
 		
 	n_threads -= min(N_BLOCKS * BLOCK_SIZE, n_threads);
 	if (n_threads == 0) {
@@ -965,170 +963,116 @@ std::atomic<int> indice_help_me(0);
 
 void prepara_argomenti_globali (AtomicIncumbent & global_incumbent, vector<VtxPair> & sol_corrente) { //////////////////////////////////////////////// NUOVE FUNZIONI MCSPLIT-MOSCA ////////////////////////////////////////////////////////////////////////
 
-	//cout << "prepara argomenti globali" << endl;
-	//cout << "\tsol size" << endl;
 	uint sol_size = 1 + 2*(MIN(n0, n1));
-	//cout << "\targs_num" << endl;
-	uint args_num = N_BLOCKS * BLOCK_SIZE * 2 * arguments.dimensione_buffer;
-	//cout << "\ta_size" << endl;
+	uint args_num = N_BLOCKS * BLOCK_SIZE * 2 * arguments.buffer_size;
 	uint a_size = (BDS - 2 + 2 * __gpu_level + n0 + n1);
-	//cout << "\tn_threads" << endl;
-	int n_threads = argomenti_i_globali.size(); //probabilmente questo valore potrebbe essere rimosso
-	uint n_args = argomenti_globali.size(); //probabilmente questo valore potrebbe essere rimosso
-	//cout << "\targ_i" << endl;
+	int n_threads = global_arguments_i.size();
+	uint n_args = global_arguments.size();
 	uint arg_i = 0, i = 0;
-	//cout << "\tmin_size" << endl;
 	int min_size = MIN(g0->n, g1->n);
 	
-
-	//cout << "\targs_i" << endl;
 	uint args_i[N_BLOCKS * BLOCK_SIZE];
 	
-	//cout << "\targs_size" << endl;
 	uint args_size = args_num * a_size;
-	//cout << "\targs malloc" << endl;
 	uchar *args = (uchar*) malloc(args_size * sizeof *args);
 	
-	//cout << "\tstable sort" << endl;
-	//cout << "\t\tn_threads = " << n_threads << endl;
-	stable_sort(argomenti_i_globali.begin(), argomenti_i_globali.begin() + n_threads, compareData);
-	
-	//cout << "\tcalcolo size" << endl;
+	stable_sort(global_arguments_i.begin(), global_arguments_i.begin() + n_threads, compareData);
 	
 	uint dim_kernel = 0;
-	for (uint b = 0; b < n_threads /*N_BLOCKS * BLOCK_SIZE*/; b++)  {
-		dim_kernel += argomenti_i_globali[n_threads-b-1].number_of_bidomains;
+	for (uint b = 0; b < n_threads; b++)  {
+		dim_kernel += global_arguments_i[n_threads-b-1].number_of_bidomains;
 	}
 	dim_kernel = dim_kernel * a_size;
-	//cout << "\tresize" << endl;
+    
 	if (dim_kernel > args_size) {
 		args = (uchar*) safe_realloc(args, dim_kernel * sizeof *args);
 	}
 	args_size = dim_kernel;
-			
-	//cout << "\tcopia argomenti" << endl;			
 		
-	for (uint b = 0; b < n_threads/*N_BLOCKS * BLOCK_SIZE*/; b++) {
+	for (uint b = 0; b < n_threads; b++) {
 		args_i[b] = arg_i;
-		for(uint c = 0; c < argomenti_i_globali[n_threads-b-1].number_of_bidomains; c++) {
+		for(uint c = 0; c < global_arguments_i[n_threads-b-1].number_of_bidomains; c++) {
 			for (i = 0; i < BDS - 2; i++, arg_i++)
-				args[arg_i] = argomenti_globali[argomenti_i_globali[n_threads-b-1].i + c].domains[i];
+				args[arg_i] = global_arguments[global_arguments_i[n_threads-b-1].i + c].domains[i];
 			for (i = 0; i < __gpu_level; i++, arg_i++)
-				args[arg_i] = argomenti_globali[argomenti_i_globali[n_threads-b-1].i + c].cur[i][L];
+				args[arg_i] = global_arguments[global_arguments_i[n_threads-b-1].i + c].cur[i][L];
 			for (i = 0; i < __gpu_level; i++, arg_i++)
-				args[arg_i] = argomenti_globali[argomenti_i_globali[n_threads-b-1].i + c].cur[i][R];
+				args[arg_i] = global_arguments[global_arguments_i[n_threads-b-1].i + c].cur[i][R];
 			for (i = 0; i < n0; i++, arg_i++)
-				args[arg_i] = argomenti_globali[argomenti_i_globali[n_threads-b-1].i + c].left[i];
-			for (i = 0; i < n1; i++, arg_i++) //non dovrebbe essere n1???
-				args[arg_i] = argomenti_globali[argomenti_i_globali[n_threads-b-1].i + c].right[i];
+				args[arg_i] = global_arguments[global_arguments_i[n_threads-b-1].i + c].left[i];
+			for (i = 0; i < n1; i++, arg_i++)
+				args[arg_i] = global_arguments[global_arguments_i[n_threads-b-1].i + c].right[i];
 		}
 	}
-	//cout << "\tlancio kernel" << endl;
+    
 	if(arguments.debug)
-		cout << "lancio kernel:" << endl << 
-		"\tthreads:             " << n_threads << endl <<
-		"\targomenti:           " << n_args << endl <<
-		"\tthreads kernel:      " << N_BLOCKS * BLOCK_SIZE << endl <<
-		"\targomenti kernel:    " << arg_i/a_size << endl <<
-		"\targs_size:           " << args_size << endl <<
-		"\tmigliore bound:      " << argomenti_i_globali[n_threads-1].bound_size << endl <<
-		"\tpeggiore bound:      " << argomenti_i_globali[MAX(n_threads-1-N_BLOCKS*BLOCK_SIZE, 0)].bound_size<<endl<<
-		"\tultimo   bound:      " << argomenti_i_globali[0].bound_size << endl;
-	
-	
-	//clock_gettime(CLOCK_MONOTONIC, &fine);
-	//time_elapsed = (fine.tv_sec - inizio.tv_sec); // calculating elapsed seconds
-	//time_elapsed += (double) (fine.tv_nsec - inizio.tv_nsec) / 1000000000.0; // adding elapsed nanoseconds
-	//if(arguments.verbose)
-	//	printf("tempo cattura dati >>> %015.10f\n", time_elapsed);
-	
-	//ttcd += time_elapsed;
-	
-	//clock_gettime(CLOCK_MONOTONIC, &inizio);
+		cout << "launching kernel:" << endl << 
+		"\tthreads:              " << n_threads << endl <<
+		"\targuments:            " << n_args << endl <<
+		"\tthreads kernel:       " << N_BLOCKS * BLOCK_SIZE << endl <<
+		"\targuments kernel:     " << arg_i/a_size << endl <<
+		"\ttargs_size:           " << args_size << endl <<
+		"\tbest bound:           " << global_arguments_i[n_threads-1].bound_size << endl <<
+		"\tworst bound:          " << global_arguments_i[MAX(n_threads-1-N_BLOCKS*BLOCK_SIZE, 0)].bound_size<<endl<<
+		"\tlast bound:           " << global_arguments_i[0].bound_size << endl;
 	
 	uchar inc_pos = global_incumbent.value;
+    
+	uchar local_solution[min_size][2];
 	
-	
-	//cout << "migliore soluzione attuale = " << +inc_pos << endl;
-	uchar soluzione_locale[min_size][2];
-	
-	launch_kernel(args, n_threads, a_size, sol_size, args_i, soluzione_locale, &inc_pos, args_size, arg_i/**a_size*/);
+	launch_kernel(args, n_threads, a_size, sol_size, args_i, local_solution, &inc_pos, args_size, arg_i);
 	
 	if(global_incumbent.update(inc_pos)) {
 		sol_corrente.clear();
 		for(int i=0; i<inc_pos; i++) {
-			VtxPair coppia ((int)soluzione_locale[i][L], (int)soluzione_locale[i][R]);
-			//coppia.v = (int)soluzione_locale[i][L];
-			//coppia.w = (int)soluzione_locale[i][R];
-			sol_corrente.push_back(coppia);
-			//soluzione_globale[i][L] = soluzione_locale[i][L];
-			//soluzione_globale[i][R] = soluzione_locale[i][R];
+			VtxPair pair ((int)local_solution[i][L], (int)local_solution[i][R]);
+			sol_corrente.push_back(pair);
 		}
 	}
-	
-	//clock_gettime(CLOCK_MONOTONIC, &fine);
-	//time_elapsed = (fine.tv_sec - inizio.tv_sec); // calculating elapsed seconds
-	//time_elapsed += (double) (fine.tv_nsec - inizio.tv_nsec) / 1000000000.0; // adding elapsed nanoseconds
-	//if(arguments.verbose)
-	//	printf("tempo soluzione    >>> %015.10f\n", time_elapsed);
-	
-	//ttsg += time_elapsed;
-	
-	//clock_gettime(CLOCK_MONOTONIC, &inizio);
 	
 	if(arguments.debug)
 		cout << "Soluzione migliore: " << +(uchar)inc_pos << endl;
 	
-	clean_arguments_v2(argomenti_globali, argomenti_i_globali, inc_pos, n_args, n_threads);
+	clean_arguments_v2(global_arguments, global_arguments_i, inc_pos, n_args, n_threads);
 	
 	if(arguments.debug)
 		cout << "\tthreads:             " << n_threads << endl <<
-		"\tdim args_i:          " << argomenti_i_globali.size() << endl <<
+		"\tdim args_i:          " << global_arguments_i.size() << endl <<
 		"\targomenti:           " << n_args << endl <<
-		"\tdim args:            " << argomenti_globali.size() << endl;
+		"\tdim args:            " << global_arguments.size() << endl;
 }
 
-void compila_argomenti_globali (vector<Bidomain> & domini, uint bound_size, vector<VtxPair> & sol_corrente, vector<uchar> & left, vector<uchar> & right, AtomicIncumbent & global_incumbent, vector<VtxPair> & my_incumbent) { /////////////////////////////////////// NUOVA FUNZIONE ///////////////////////////////////////////
-	//cout << "compila argomenti globali" << endl;
-	Data nuovo_arg;
-	wrapperData pos_nuovo_arg;
-	//cout << "\tdichiarazioni" << endl;
-	pos_nuovo_arg.i = argomenti_globali.size();
-	pos_nuovo_arg.number_of_bidomains = domini.size();
-	pos_nuovo_arg.bound_size = bound_size;
-	argomenti_i_globali.push_back(pos_nuovo_arg);
-	//cout << "\targomenti i compilato" << endl;
-	for (int i=0; i<domini.size(); i++) {
-		nuovo_arg.domains[L] = domini[i].l;
-		nuovo_arg.domains[R] = domini[i].r;
-		nuovo_arg.domains[LL] = domini[i].left_len;
-		nuovo_arg.domains[RL] = domini[i].right_len;
-		nuovo_arg.domains[ADJ] = domini[i].is_adjacent;
-		nuovo_arg.domains[P] = split_levels+1;
+void compila_argomenti_globali (vector<Bidomain> & domains, uint bound_size, vector<VtxPair> & current_sol, vector<uchar> & left, vector<uchar> & right, AtomicIncumbent & global_incumbent, vector<VtxPair> & my_incumbent) { /////////////////////////////////////// NUOVA FUNZIONE ///////////////////////////////////////////
+	Data new_arg;
+	wrapperData pos_new_arg;
+	pos_new_arg.i = global_arguments.size();
+	pos_new_arg.number_of_bidomains = domains.size();
+	pos_new_arg.bound_size = bound_size;
+	global_arguments_i.push_back(pos_new_arg);
+	for (int i=0; i<domains.size(); i++) {
+		new_arg.domains[L] = domains[i].l;
+		new_arg.domains[R] = domains[i].r;
+		new_arg.domains[LL] = domains[i].left_len;
+		new_arg.domains[RL] = domains[i].right_len;
+		new_arg.domains[ADJ] = domains[i].is_adjacent;
+		new_arg.domains[P] = split_levels+1;
 		for (int j=0; j<__gpu_level; j++) {
-			nuovo_arg.cur[j][L] = sol_corrente[j].v;
-			nuovo_arg.cur[j][R] = sol_corrente[j].w;
+			new_arg.cur[j][L] = current_sol[j].v;
+			new_arg.cur[j][R] = current_sol[j].w;
 		}
 		for (int j=0; j<n0; j++) {
-			nuovo_arg.left[j] = left[j];
+			new_arg.left[j] = left[j];
 		}
 		for (int j=0; j<n1; j++) {
-			nuovo_arg.right[j] = right[j];
+			new_arg.right[j] = right[j];
 		}
-		argomenti_globali.push_back(nuovo_arg);
-		//cout << "\targomenti compilato" << endl;
+		global_arguments.push_back(new_arg);
 	}
-	//cout << "\t" << argomenti_i_globali.size() << endl;
-	if(argomenti_i_globali.size() == N_BLOCKS * BLOCK_SIZE * arguments.dimensione_buffer){
-		//dobbiamo fare una pulizia e buttare tutti i risultati che sono sotto il bound
-		//perché nel frattempo la CPU ha migliorato la soluzione migliore
-		//se argomenti_i_globali.size() non è più sufficientemente grande -> torniamo a raccogliere dati
+	if(global_arguments_i.size() == N_BLOCKS * BLOCK_SIZE * arguments.buffer_size){
+        // we need to clean and discard all results that do not satisfy the bound
+        // since the GPU has improved the solution
+        // if after cleaning the size is not large enough we go back collecting new data
 		prepara_argomenti_globali(global_incumbent, my_incumbent);
-		
-		/*if (my_incumbent.size() < sol_corrente.size()) {
-		    my_incumbent = sol_corrente;
-		    //global_incumbent.update(sol_corrente.size());
-		}*/
 	}
 	
 }
@@ -1144,7 +1088,6 @@ void compila_argomenti_globali (vector<Bidomain> & domini, uint bound_size, vect
 
 
 bool check_sol(const Graph & g0, const Graph & g1 , const vector<VtxPair> & solution) {
-    //return true;
     vector<bool> used_left(g0.n, false);
     vector<bool> used_right(g1.n, false);
     unsigned int sol_size = solution.size();
@@ -1332,19 +1275,12 @@ void GPU_solve(const unsigned depth, const Graph & g0, const Graph & g1,
     Bidomain &bd = domains[bd_idx];
 
     bd.right_len--;
-    //std::atomic<int> shared_i{ 0 };
     const int i_end = bd.right_len + 2; /* including the null */
 
-    
-    // Grab this first, before advertising that we can get help
-    //int which_i_should_i_run_next = shared_i++;
-
-    
 ///////////////////////////main function////////////////////
     int v = find_min_value(left, bd.l, bd.left_len);
     remove_vtx_from_left_domain(left, domains[bd_idx], v);
     int w = -1;
-    //std::cout << "main funtion - " << std::this_thread::get_id() << std::endl;
 
     for (int i = 0 ; i < i_end /* not != */ ; i++) {
         if (i != i_end - 1) {
@@ -1355,8 +1291,6 @@ void GPU_solve(const unsigned depth, const Graph & g0, const Graph & g1,
             right[bd.r + idx] = right[bd.r + bd.right_len];
             right[bd.r + bd.right_len] = w;
 
-            //if (i == which_i_should_i_run_next) {
-            //which_i_should_i_run_next = shared_i++;
             auto new_domains = filter_domains(domains, left, right, g0, g1, v, w,
                     arguments.directed || arguments.edge_labelled);
             current.push_back(VtxPair(v, w));
@@ -1412,7 +1346,6 @@ void GPU_solve(const unsigned depth, const Graph & g0, const Graph & g1,
 std::pair<vector<VtxPair>, unsigned long long> GPU_mcs(const Graph & g0, const Graph & g1) {
     vector<int> left;  // the buffer of vertex indices for the left partitions
     vector<int> right;  // the buffer of vertex indices for the right partitions
-    //std::cout << "mcs - " << std::this_thread::get_id() << std::endl;
 
     srand(time(nullptr));
     auto domains = vector<Bidomain> {};
@@ -1475,7 +1408,6 @@ std::pair<vector<VtxPair>, unsigned long long> GPU_mcs(const Graph & g0, const G
         Position position;
         GPU_solve(0, g0, g1, global_incumbent, per_thread_incumbents, current, domains, left, right, 1, position, global_nodes);
         
-        //cout << "fine MCS inizio ciclo finale" << endl;
         prepara_argomenti_globali(global_incumbent, incumbent);
         
         for (auto & i : per_thread_incumbents)
@@ -1502,7 +1434,6 @@ void solve_nopar(const unsigned depth, const Graph & g0, const Graph & g1,
     if (abort_due_to_timeout)
         return;
 
-	//cout << "Thread: " << std::this_thread::get_id() << endl;
     my_thread_nodes++;
 
     if (my_incumbent.size() < current.size()) {
@@ -1523,10 +1454,6 @@ void solve_nopar(const unsigned depth, const Graph & g0, const Graph & g1,
     Bidomain &bd = domains[bd_idx];
 
     bd.right_len--;
-    //std::atomic<int> shared_i{ 0 };
-
-    //std::cout << "solve_nopar - " << std::this_thread::get_id() << std::endl;
-
 
     int v = find_min_value(left, bd.l, bd.left_len);
     remove_vtx_from_left_domain(left, domains[bd_idx], v);
@@ -1589,14 +1516,10 @@ void solve(const unsigned depth, const Graph & g0, const Graph & g1,
     std::atomic<int> shared_i{ 0 };
     const int i_end = bd.right_len + 2; /* including the null */
 
-    // std::cout << "solve - " << std::hash<std::thread::id>{}(std::this_thread::get_id())%100000 << std::endl;
-    //usleep(std::hash<std::thread::id>{}(std::this_thread::get_id())%100000+1000000);
     // Version of the loop used by helpers
     std::function<void (unsigned long long &)> helper_function = [&shared_i, &g0, &g1, &global_incumbent, &per_thread_incumbents, &position, &depth,
         i_end, matching_size_goal, current, domains, left, right, &help_me] (unsigned long long & help_thread_nodes) {
         int which_i_should_i_run_next = shared_i++;
-
-      // std::cout << "helper funtion - " << std::this_thread::get_id() << std::endl;
 
         if (which_i_should_i_run_next >= i_end)
             return; /* don't waste time recomputing */
@@ -1728,7 +1651,6 @@ void solve(const unsigned depth, const Graph & g0, const Graph & g1,
 std::pair<vector<VtxPair>, unsigned long long> mcs(const Graph & g0, const Graph & g1, HelpMe & help_me) {
     vector<int> left;  // the buffer of vertex indices for the left partitions
     vector<int> right;  // the buffer of vertex indices for the right partitions
-    //std::cout << "mcs - " << std::this_thread::get_id() << std::endl;
 
     srand(time(nullptr));
     auto domains = vector<Bidomain> {};
@@ -1776,11 +1698,9 @@ std::pair<vector<VtxPair>, unsigned long long> mcs(const Graph & g0, const Graph
             per_thread_incumbents.emplace(std::this_thread::get_id(), vector<VtxPair>());
             Position position;
             position.add(0, indice_help_me++);
-            //HelpMe help_me(arguments.threads - 1);
             for (auto & t : help_me.threads)
                 per_thread_incumbents.emplace(t.get_id(), vector<VtxPair>());
             solve(0, g0, g1, global_incumbent, per_thread_incumbents, current, domains_copy, left_copy, right_copy, goal, position, help_me, global_nodes);
-            //help_me.kill_workers();
             for (auto & n : help_me.nodes) {
                 global_nodes += n;
             }
@@ -1797,11 +1717,9 @@ std::pair<vector<VtxPair>, unsigned long long> mcs(const Graph & g0, const Graph
         per_thread_incumbents.emplace(std::this_thread::get_id(), vector<VtxPair>());
         Position position;
         position.add(0, indice_help_me++);
-        //HelpMe help_me(arguments.threads - 1);
         for (auto & t : help_me.threads)
             per_thread_incumbents.emplace(t.get_id(), vector<VtxPair>());
         solve(0, g0, g1, global_incumbent, per_thread_incumbents, current, domains, left, right, 1, position, help_me, global_nodes);
-        //help_me.kill_workers();
         for (auto & n : help_me.nodes)
             global_nodes += n;
         for (auto & i : per_thread_incumbents)
@@ -1831,19 +1749,14 @@ int sum(const vector<int> & vec) {
 GraphData write_Graph(GraphData* g0, GraphData* g1, vector<VtxPair>& solution) {
 
     unsigned int sol_size = solution.size();
-    //cout << "Stampando soluzione di dimensione: " << solution.size() << endl;
-
-    //cout << "\tOrdine g0: " << g0->ordine << "\tOrdine g1: " << g1->ordine << endl;
+    
     GraphData gd(Graph (sol_size), g0, g1);
-    //cout << "\tOrdine g0: " << gd.g0->ordine << "\tOrdine g1: " << gd.g1->ordine << endl;
     
     vector<bool> vtx_v(g0->g.n, false), vtx_w(g1->g.n, false);
     for (unsigned int i = 0; i < sol_size; i++) {
-        //cout << solution[i].v << " " << solution[i].w << endl;
         vtx_v[solution[i].v] = true;
         vtx_w[solution[i].w] = true;
     }
-    //cout << "pre adjmat e map_g0" << endl;
     int ii = 0, jj = 0;
     for (int i = 0; i < g0->g.n; i++) {
         if (vtx_v[i]) {
@@ -1859,7 +1772,6 @@ GraphData write_Graph(GraphData* g0, GraphData* g1, vector<VtxPair>& solution) {
             ii++;
         }
     }
-    //cout << "pre map_g1" << endl;
     ii = 0;
     for (int i = 0; i < gd.g.n; i++) {
         for (unsigned int j = 0; j < sol_size; j++) {
@@ -1868,7 +1780,6 @@ GraphData write_Graph(GraphData* g0, GraphData* g1, vector<VtxPair>& solution) {
             }
         }
     }
-    //cout << "Fine write_Graph" << endl;
     return gd;
 }
 
@@ -1877,8 +1788,7 @@ void recursive_print (GraphData *gd, vector<int> &sol, int map) {
 		recursive_print(gd->g0, sol, gd->map_g0.at(map));
 		recursive_print(gd->g1, sol, gd->map_g1.at(map));
 	}
-	else { //questo è uno dei grafi originali
-        //cout << "Ordine: " << gd->ordine << "/" << sol.size() << endl;
+	else { // this is one of the original graphs
 		sol.at(gd->ordine) = map;
 	}
 }
@@ -1888,15 +1798,10 @@ void nuova_print (vector<vector<GraphData>> &gd) {
 	vector<int> sol(n_files);
 	GraphData *root = &gd.back().at(0);
 	
-    //cout << "Size: " << root->g.n << endl;
 	for (int i = 0; i < root->g.n; i++) {
-        //cout << "map_g0: " << root->map_g0.size() << endl;
-        //mafor (int j = 0; j < root->map_g0.size())
         if (root->map_g0.at(i) > 20) 
             cout << "map_g0: " << root->map_g0.at(i) << endl;
 		recursive_print(root->g0, sol, root->map_g0.at(i));
-        //cout << "g0 OK!" << endl;
-        //cout << "map_g1: " << root->map_g1.size() << endl;
         if (root->map_g1.at(i) > 20)
             cout << "map_g1: " << root->map_g1.at(i) << endl;
 		recursive_print(root->g1, sol, root->map_g1.at(i));
@@ -1913,14 +1818,12 @@ void nuova_print (vector<vector<GraphData>> &gd) {
 
 
 
-void GPU_produci_soluzione (vector<GraphData> &grafi, vector<GraphData> &sol, int indice) {
+void GPU_produce_solution (vector<GraphData> &graphs, vector<GraphData> &sol, int index) {
 
-	//cout << "." << endl;
-	Graph *g0 = &grafi.at(indice).g;
-	Graph *g1 = &grafi.at(grafi.size()-1-indice).g;
+	Graph *g0 = &graphs.at(index).g;
+	Graph *g1 = &graphs.at(graphs.size()-1-index).g;
 	vector<int> g0_deg = calculate_degrees(*g0);
 	vector<int> g1_deg = calculate_degrees(*g1);
-	//cout << ".." << endl;
 
 	// As implemented here, g1_dense and g0_dense are false for all instances
 	// in the Experimental Evaluation section of the paper.  Thus,
@@ -1934,20 +1837,15 @@ void GPU_produci_soluzione (vector<GraphData> &grafi, vector<GraphData> &sol, in
 	std::stable_sort(std::begin(vv0), std::end(vv0), [&](int a, int b) {
 		return g1_dense ? (g0_deg[a]<g0_deg[b]) : (g0_deg[a]>g0_deg[b]);
 	});
-	//cout << "..." << endl;
 	vector<int> vv1(g1->n);
 	std::iota(std::begin(vv1), std::end(vv1), 0);
 	bool g0_dense = sum(g0_deg) > g0->n*(g0->n-1);
 	std::stable_sort(std::begin(vv1), std::end(vv1), [&](int a, int b) {
 		return g0_dense ? (g1_deg[a]<g1_deg[b]) : (g1_deg[a]>g1_deg[b]);
 	});
-	//cout << "...." << endl;
 
 	struct Graph g0_sorted = induced_subgraph(*g0, vv0);
 	struct Graph g1_sorted = induced_subgraph(*g1, vv1);
-	
-	
-	//cout << "....!" << endl;
 	
 	n0 = g0->n;
 	n1 = g1->n;
@@ -1960,15 +1858,9 @@ void GPU_produci_soluzione (vector<GraphData> &grafi, vector<GraphData> &sol, in
         for (int j = 0; j < n1; j++)
             adjmat1[i][j] = g1_sorted.adjmat[i][j];
     
-    //cout << "funziona prima" << endl;
-    
     checkCudaErrors(cudaDeviceReset());
     
-    //cout << "funziona in mezzo" << endl;
-    
     move_graphs_to_gpu(&g0_sorted, &g1_sorted);
-	
-	//cout << "funziona" << endl;
 	
 	std::pair<vector<VtxPair>, unsigned long long> solution = GPU_mcs(g0_sorted, g1_sorted);
 
@@ -1983,17 +1875,15 @@ void GPU_produci_soluzione (vector<GraphData> &grafi, vector<GraphData> &sol, in
         exit (-1);
     }
 
-	//cout << sol.size() << " - " << indice << endl;
-	sol.at(indice) = write_Graph(&grafi.at(indice), &grafi.at(grafi.size()-1-indice), solution.first);
-	//write_Graph(GraphData* g0, GraphData* g1, vector<VtxPair>& solution)
+	sol.at(index) = write_Graph(&graphs.at(index), &graphs.at(graphs.size()-1-index), solution.first);
 }
 
 
 ///////////////////////////////////////////////////////////////////////////////
 
-void produci_soluzione (vector<GraphData> &grafi, vector<GraphData> &sol, int indice, HelpMe & help_me) {
-	Graph *g0 = &grafi.at(indice).g;
-	Graph *g1 = &grafi.at(grafi.size()-1-indice).g;
+void produce_solution (vector<GraphData> &graphs, vector<GraphData> &sol, int index, HelpMe & help_me) {
+	Graph *g0 = &graphs.at(index).g;
+	Graph *g1 = &graphs.at(graphs.size()-1-index).g;
 	vector<int> g0_deg = calculate_degrees(*g0);
 	vector<int> g1_deg = calculate_degrees(*g1);
 
@@ -2033,12 +1923,10 @@ void produci_soluzione (vector<GraphData> &grafi, vector<GraphData> &sol, int in
 	}
 
     if (!check_sol(*g0, *g1, solution.first)) {
-        cout << "??????????????????????????????????????" << endl;
+        cout << "WRONG SOLUTION!" << endl;
+        exit (-1);
     }
-    //check_sol(const Graph & g0, const Graph & g1 , const vector<VtxPair> & solution)
-	//cout << sol.size() << " - " << indice << endl;
-	sol.at(indice) = write_Graph(&grafi.at(indice), &grafi.at(grafi.size()-1-indice), solution.first);
-	//write_Graph(GraphData* g0, GraphData* g1, vector<VtxPair>& solution)
+	sol.at(index) = write_Graph(&graphs.at(index), &graphs.at(graphs.size()-1-index), solution.first);
 }
 
 void sort_by_size_ascending(std::vector <struct GraphData> &gi) {
@@ -2065,8 +1953,8 @@ int main(int argc, char** argv) {
     argp_parse(&argp, argc, argv, 0, 0, 0);
     
     int n_files = arguments.filenames.size();
-    int numero_ricorsioni = ceil(log2(n_files)) + 1;
-    vector<vector<GraphData>> gi_data(numero_ricorsioni);
+    int recursion_number = ceil(log2(n_files)) + 1;
+    vector<vector<GraphData>> gi_data(recursion_number);
 
 
     char format = arguments.dimacs ? 'D' : arguments.lad ? 'L' : 'B';
@@ -2075,16 +1963,11 @@ int main(int argc, char** argv) {
             arguments.edge_labelled, arguments.vertex_labelled));
         gi_data.at(0).back().ordine = i;
     }
-    //struct Graph g0 = readGraph(arguments.filename1, format, arguments.directed,
-    //        arguments.edge_labelled, arguments.vertex_labelled);
-    //struct Graph g1 = readGraph(arguments.filename2, format, arguments.directed,
-    //        arguments.edge_labelled, arguments.vertex_labelled);
 
     
 	struct timespec s, finish;
 	float time_elapsed;
 	clock_gettime(CLOCK_MONOTONIC, &s);
-    //auto start = steady_clock::now();
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -2094,7 +1977,7 @@ int main(int argc, char** argv) {
     bool aborted_at_least_once = false;
     float timeout = arguments.timeout;
     
-    for (int j = 0; j < numero_ricorsioni-1 && !aborted; j++) {
+    for (int j = 0; j < recursion_number-1 && !aborted; j++) {
         std::thread timeout_thread;
         std::mutex timeout_mutex;
         std::condition_variable timeout_cv;
@@ -2102,7 +1985,7 @@ int main(int argc, char** argv) {
 
         if (0 != arguments.timeout) {
             timeout_thread = std::thread([&] {
-                if (j != numero_ricorsioni-2) {
+                if (j != recursion_number-2) {
                     timeout = timeout/2;
                 }
                 auto abort_time = steady_clock::now() + floatToDuration(timeout);
@@ -2122,18 +2005,15 @@ int main(int argc, char** argv) {
                 abort_due_to_timeout.store(true);
                 });
         }
-        //cout << "ecco" << endl;
         sort_by_size_ascending(gi_data.at(j));
         gi_data.at(j+1).resize(gi_data.at(j).size()/2 + gi_data.at(j).size()%2);
         
         for (unsigned int i = 0; i < (unsigned int)(gi_data.at(j).size()/2); i++) {
-        	//cout << "ciclo " << j << "\tgrafo " << i << endl;
             if (gi_data.at(j).size()/2 > 1 && i == 0) {
-            	//cout << "GPU partita" << endl;
-                t.emplace_back(std::thread([&gi_data, i, j] { GPU_produci_soluzione(gi_data.at(j), gi_data.at(j+1), i); } ));
+                t.emplace_back(std::thread([&gi_data, i, j] { GPU_produce_solution(gi_data.at(j), gi_data.at(j+1), i); } ));
             }
             else {
-                t.emplace_back(std::thread([&gi_data, i, j, &help_me] { produci_soluzione(gi_data.at(j), gi_data.at(j+1), i, help_me); } ));
+                t.emplace_back(std::thread([&gi_data, i, j, &help_me] { produce_solution(gi_data.at(j), gi_data.at(j+1), i, help_me); } ));
             }
         }
         if (gi_data.at(j).size() % 2) {
@@ -2144,11 +2024,14 @@ int main(int argc, char** argv) {
         }
         t.clear();
 
-        if (aborted) cout << "TIMEOUT ";
-        for (auto &dato : gi_data.at(j+1)) {
-            cout << dato.g.n << " ";
+        if (arguments.verbose) {
+            cout << "Iteration " << j << " solutions: ";
+            for (auto &data : gi_data.at(j+1)) {
+                cout << data.g.n << " ";
+            }
+            if (aborted) cout << "TIMEOUT";
+            cout << endl;
         }
-        cout << endl;
 
         // Clean up the timeout thread
         if (timeout_thread.joinable()) {
@@ -2167,24 +2050,10 @@ int main(int argc, char** argv) {
     clock_gettime(CLOCK_MONOTONIC, &finish);
     time_elapsed = (finish.tv_sec - s.tv_sec);
     time_elapsed += (finish.tv_nsec - s.tv_nsec) / 1000000000.0;
-    
-    /*if (!check_sol(g0, g1, solution.first))
-        fail("*** Error: Invalid solution\n");*/
-        
-    /*for(int i=0; i<gi_data.size(); i++) {
-    	cout << gi_data.at(i).size() << " - ";
-    	for(int j=0; j<gi_data.at(i).size(); j++) {
-    		cout << gi_data.at(i).at(j).g.n << " ";
-    	}
-    	cout << endl;
-    }*/
 
     nuova_print(gi_data);
     int sol_size = gi_data.back().at(0).g.n;
-    cout << ">>> " << sol_size << " - " << (double)time_elapsed/*/1000*/ << endl;
-    
-    //fprintf(stdout, ">>> %ld - %015.010f\n", solution.first.size(), (double)(time_elapsed));
-    //cout << ">>> " << solution.first.size() << " - " << (double)(end-begin)/CLOCKS_PER_SEC << endl;
+    cout << ">>> " << sol_size << " - " << (double)time_elapsed << endl;
 
     if (aborted_at_least_once)
         cout << "TIMEOUT" << endl;
