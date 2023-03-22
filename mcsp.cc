@@ -230,8 +230,8 @@ void arg_parse(int argc, char** argv) {
 #endif
 
 std::vector< std::unique_ptr<std::atomic<bool>> > abort_due_to_timeout;
-std::vector< std::unique_ptr<std::atomic<bool>> > stop_due_to_print;
-std::vector< std::unique_ptr<std::atomic<bool>> > printed;
+//std::vector< std::unique_ptr<std::atomic<bool>> > stop_due_to_print;
+//std::vector< std::unique_ptr<std::atomic<bool>> > printed;
 std::vector< std::unique_ptr<std::mutex> > private_mux;
 std::vector< std::unique_ptr<std::condition_variable> > private_cv;
 std::vector< std::unique_ptr<std::mutex> > print_mux;
@@ -767,7 +767,7 @@ void solve_nopar(const unsigned depth, const Graph & g0, const Graph & g1,
                  vector<int> & left, vector<int> & right, const unsigned int matching_size_goal,
                  unsigned long long & my_thread_nodes, int profondita, std::atomic<int>& in_attesa)
 {
-    if (stop_due_to_print.at(profondita)->load() && !printed.at(profondita)->load()) {
+    /*if (stop_due_to_print.at(profondita)->load() && !printed.at(profondita)->load()) {
         //wait
         int val = in_attesa++;
         std::unique_lock<std::mutex> lck(*print_mux.at(profondita));
@@ -779,7 +779,7 @@ void solve_nopar(const unsigned depth, const Graph & g0, const Graph & g1,
             private_cv.at(profondita)->notify_all();
         }
         print_cv.at(profondita)->wait(lck);
-    }
+    }*/
     if (abort_due_to_timeout.at(profondita)->load())
         return;
 
@@ -856,7 +856,7 @@ void solve(const unsigned depth, const Graph & g0, const Graph & g1,
            const Position & position, HelpMe & help_me, unsigned long long & my_thread_nodes,
            int profondita, std::atomic<int>& in_attesa)
 {
-    if (stop_due_to_print.at(profondita)->load() && !printed.at(profondita)->load()) {
+    /*if (stop_due_to_print.at(profondita)->load() && !printed.at(profondita)->load()) {
         //wait
         int val = in_attesa++;
         std::unique_lock<std::mutex> lck(*print_mux.at(profondita));
@@ -868,7 +868,7 @@ void solve(const unsigned depth, const Graph & g0, const Graph & g1,
             private_cv.at(profondita)->notify_all();
         }
         print_cv.at(profondita)->wait(lck);
-    }
+    }*/
     if (abort_due_to_timeout.at(profondita)->load())
         return;
 
@@ -1214,7 +1214,7 @@ std::pair<vector<vector<VtxPair>>, unsigned long long> mcs(const Graph & g0, con
             per_thread_incumbents.emplace(t.get_id(), vector<vector<VtxPair>>());
         
         //start wait for print thread
-        if (0 != arguments.timeout) {
+        /*if (0 != arguments.timeout) {
             *print_thread.at(profondita) = std::thread([&] {
                 stop_due_to_print.at(profondita)->store(false);
 #if DEBUG
@@ -1225,12 +1225,12 @@ std::pair<vector<vector<VtxPair>>, unsigned long long> mcs(const Graph & g0, con
                 std::condition_variable timeout_cv;
                 print_time += (std::chrono::seconds(arguments.timeout / (arguments.n_files - 1)));
 
-                /* Sleep until either we've reached the time to print,
-                    * or we've finished all the work. */
+                // Sleep until either we've reached the time to print,
+                //     or we've finished all the work.
                 std::unique_lock<std::mutex> guard(timeout_mutex);
                 while (!stop_due_to_print.at(profondita)->load()) {
                     if (std::cv_status::timeout == timeout_cv.wait_until(guard, print_time)) {
-                        /* We've woken up, and it's due to a timeout. */
+                        // We've woken up, and it's due to a timeout.
                         //get mux
                         std::unique_lock<std::mutex> lck(*private_mux.at(profondita));
 #if DEBUG
@@ -1251,14 +1251,14 @@ std::pair<vector<vector<VtxPair>>, unsigned long long> mcs(const Graph & g0, con
                             sol_intermedie.push_back(write_Graph(g0, g1, *best_incumbent, padre));
                             doveScrivere.push(sol_intermedie.back());
                         }
-                        printed.at(profondita)->store(true);
+                        //printed.at(profondita)->store(true);
                         std::unique_lock<std::mutex> guard(*print_mux.at(profondita));
                         print_cv.at(profondita)->notify_all();
                         break;
                     }
                 }
             });
-        }
+        }*/
 
         std::atomic<int> in_attesa(0);
         solve(0, g0, g1, global_incumbent, per_thread_incumbents, current, domains, left, right, 1 /*max_size_found*/, position, help_me,
@@ -1289,7 +1289,7 @@ std::pair<vector<vector<VtxPair>>, unsigned long long> mcs(const Graph & g0, con
         if (print_thread.at(profondita)->joinable()) {
             {
                 std::unique_lock<std::mutex> guard(*private_mux.at(profondita));
-                stop_due_to_print.at(profondita)->store(true);
+                //stop_due_to_print.at(profondita)->store(true);
                 private_cv.at(profondita)->notify_all();
             }
 #if DEBUG
@@ -1411,10 +1411,12 @@ struct GruppoSoluzioni {
 //questa funzione chiama find_mcs_solution e butta tutte le soluzioni di dimensione non massima o inferiori a max_size_found
 //per poi ritornare una coppia dimensione_soluzione_massima_trovata, numero_grafi_dim_massima
 void try_solve (Graph & firstElement, Graph & secondElement, SolutionGraph *sol_padre, int profondita, int& max_size_found, SecureQueue<SolutionGraph *>& doveScrivere, std::chrono::steady_clock::time_point now) {
+    
+    
     std::pair<vector<vector<VtxPair>>, unsigned long long> solutions = find_mcs_solution(firstElement, secondElement, sol_padre, max_size_found, profondita, doveScrivere, now);
     int i = 0, size;
     std::string filename;
-    size = solutions.first.at(0).size();
+    size = (solutions.first.size() > 0) ? solutions.first.at(0).size() : 0;
 
 #if DEBUG
     cout << solutions.first.at(0).size() << " " << solutions.first.size() << endl;
@@ -1444,10 +1446,17 @@ void try_solve (Graph & firstElement, Graph & secondElement, SolutionGraph *sol_
     }
 }
 
+auto floatToDuration(const float time_s)
+{
+    using namespace std::chrono;
+    using fsec = duration<float>;
+    return round<nanoseconds>(fsec{time_s});
+}
+
 void aspetta_soluzione(SecureQueue<SolutionGraph *>& doveAttendere, SecureQueue<SolutionGraph*>& doveScrivere, int profondita, Graph& g1) {
     SolutionGraph* indice;
     abort_due_to_timeout.at(profondita)->store(false);
-    stop_due_to_print.at(profondita)->store(false); 
+    //stop_due_to_print.at(profondita)->store(false); 
     
     bool aborted = false;
     bool printing = false;
@@ -1456,15 +1465,23 @@ void aspetta_soluzione(SecureQueue<SolutionGraph *>& doveAttendere, SecureQueue<
     std::thread timeout_thread;
     std::mutex timeout_mutex;
     std::condition_variable timeout_cv;
+    float timeout = arguments.timeout;
+
+    if (profondita != arguments.n_files - 2) {
+        for (int i = 0 ; i < profondita + 1; i++) { // we need to divide it one more time than depth
+            timeout = timeout/2;
+        }
+        timeout = (float) arguments.timeout - timeout;
+    }
 
     if (0 != arguments.timeout) {
         timeout_thread = std::thread([&] {
-            abort_time += (std::chrono::seconds(arguments.timeout - (arguments.timeout / ((int) pow(2, profondita+1)))));
+            abort_time += (floatToDuration(timeout));
             {
                 /* Sleep until either we've reached the time limit,
                  * or we've finished all the work. */
                 std::unique_lock<std::mutex> guard(timeout_mutex);
-                while (!abort_due_to_timeout.at(0)->load()) {
+                while (!abort_due_to_timeout.at(profondita)->load()) {
                     if (std::cv_status::timeout == timeout_cv.wait_until(guard, abort_time)) {
                         /* We've woken up, and it's due to a timeout. */
                         aborted = true;
@@ -1472,7 +1489,7 @@ void aspetta_soluzione(SecureQueue<SolutionGraph *>& doveAttendere, SecureQueue<
                     }
                 }
             }
-            abort_due_to_timeout.at(0)->store(true);
+            abort_due_to_timeout.at(profondita)->store(true);
         });
     }
 
@@ -1532,14 +1549,14 @@ int main(int argc, char** argv) {
     for (auto& atom : abort_due_to_timeout) {
         atom = std::make_unique<std::atomic<bool>>(false);   // init atomic ints to 0
     }
-    stop_due_to_print.resize(arguments.n_files - 1);
+    /*stop_due_to_print.resize(arguments.n_files - 1);
     for (auto& atom : stop_due_to_print) {
         atom = std::make_unique<std::atomic<bool>>(false);   // init atomic ints to 0
     }
     printed.resize(arguments.n_files - 1);
     for (auto& atom : printed) {
         atom = std::make_unique<std::atomic<bool>>(false);
-    }
+    }*/
 
     /*
     double begin = clock ();*/
@@ -1582,6 +1599,7 @@ int main(int argc, char** argv) {
     for (int i = 0; i < arguments.n_files - 2; i++) {
         //t.emplace_back(std::thread(&aspetta_soluzione, sq[i + 1], sq[i + 2], i + 1, gi[i + 2], coppieVertici));
         t.emplace_back(std::thread([&sq, &gi, i] { aspetta_soluzione(sq[i], sq[i + 1], i + 1, gi[i + 2]); }));
+        //aspetta_soluzione(sq[i], sq[i + 1], i + 1, gi[i + 2]);
     }
 
     bool aborted = false;
@@ -1593,7 +1611,11 @@ int main(int argc, char** argv) {
 
     if (0 != arguments.timeout) {
         timeout_thread = std::thread([&] {
-            abort_time += ( std::chrono::seconds(arguments.timeout / (2) ) );
+            float timeout = arguments.timeout;
+            if (arguments.n_files != 2) {
+                timeout = timeout/2;
+            }
+            abort_time += ( floatToDuration(timeout) );
             {
                 /* Sleep until either we've reached the time limit,
                  * or we've finished all the work. */
@@ -1623,6 +1645,10 @@ int main(int argc, char** argv) {
         sq.at(0).push(sol_mat.at(0).at(i));
     }
     sq.at(0).push(nullptr);
+
+    if (aborted) {
+        cout << "TIMEOUT" << endl;
+    }
 
     /* Clean up the timeout thread */
     if (timeout_thread.joinable()) {
