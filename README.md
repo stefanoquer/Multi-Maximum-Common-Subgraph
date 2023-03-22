@@ -1,7 +1,6 @@
 # Usage
-Usage: mcsp [OPTION...] HEURISTIC FILENAME1 FILENAME2
-
-Find a maximum clique in a graph in DIMACS format
+Usage: McSplit_Multigraph [OPTION...] FILENAME 1..n  
+Find a maximum common subgraph between n graphs
 
 | Option                      | Description                                                                       |
 |-----------------------------|-----------------------------------------------------------------------------------|
