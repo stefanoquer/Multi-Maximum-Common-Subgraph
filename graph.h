@@ -5,7 +5,6 @@
 //#define GRAPH_MAX_DEF 40
 //#define MAX_N_DEF 100
 #define N_THREADS std::thread::hardware_concurrency()
-#define USING_WINDOWS 0
 
 #include <limits.h>
 #include <stdbool.h>

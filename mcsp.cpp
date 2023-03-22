@@ -5,9 +5,7 @@
 #include "graph.h"
 #include "SecureQueue.h"
 
-#if !USING_WINDOWS
 #include <argp.h>
-#endif
 #include <limits.h>
 #include <locale.h>
 #include <stdbool.h>
@@ -25,15 +23,7 @@ using std::chrono::duration_cast;
 
 using namespace std;
 
-#if USING_WINDOWS
-using namespace Concurrency;
-//#include <windows.h>
-#include <ppl.h>
-#include <amp.h>
-#endif
-#ifndef _WIN32
 #include <unistd.h>
-#endif // !_WIN32
 
 
 thread t;
@@ -81,7 +71,6 @@ static void fail(char *msg) {
 
 static char doc[] = "Find a maximum clique in a graph in DIMACS format";
 static char args_doc[] = "FILENAME 1..n";
-#if !USING_WINDOWS
 static struct argp_option options[] = {
         {"quiet",     'q', 0,         0, "Quiet output"},
         {"verbose",   'v', 0,         0, "Verbose output"},
@@ -91,7 +80,6 @@ static struct argp_option options[] = {
         {"timeout",   't', "timeout", 0, "Specify a timeout (seconds)"},
         {0}
 };
-#endif
 
 static struct {
     bool quiet;
@@ -111,12 +99,10 @@ void set_default_arguments() {
     arguments.connected = false;
     arguments.dimacs = false;
     arguments.lad = false;
-    /*for (i = 0; i < GRAPH_MAX; i++)
-        arguments.filename[i] = NULL;*/
     arguments.timeout = 0;
     arguments.arg_num = 0;
 }
-#if !USING_WINDOWS
+
 static error_t parse_opt(int key, char *arg, struct argp_state *state) {
     switch (key) {
         case 'd':
@@ -157,7 +143,6 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
 }
 
 static struct argp argp = {options, parse_opt, args_doc, doc};
-#endif
 /*******************************************************************************
                                      Stats
 *******************************************************************************/
@@ -211,15 +196,15 @@ struct D {
     }
 };
 
-struct dati_Solve {
+struct data_Solve {
     struct D d;
     struct D new_d;
     struct Bidomain *bd;
     int level;
     vector<int> vertex = vector<int> (GRAPH_MAX+1);
     vector<struct BidomainList> preallocated_lists = vector<struct BidomainList> (biggest_graph+1);
-    VtxPairList incombenti;
-    VtxPairList correnti;
+    VtxPairList incumbents;
+    VtxPairList currents;
 };
 
 struct AtomicIncumbent {
@@ -302,7 +287,6 @@ int select_bidomain_position(struct BidomainList* domains, int current_matching_
 }
 
 // Returns length of left half of array
-// DA NON CAMBIARE
 int partition(int *vv, int vv_len, unsigned char *adjrow) {
     int i = 0;
     for (int j = 0; j < vv_len; j++) {
@@ -341,8 +325,6 @@ void filter_domains(
         struct BidomainList *d, struct BidomainList *new_d,
         struct Graph *g[], int vertex[]
 ) {
-    //parallel_filter_domains(d, new_d, g, vertex);
-    //return;
 
     int flag_len_edge, flag_len_noedge;
     vector<int> len_edge(GRAPH_MAX), len_noedge(GRAPH_MAX);
@@ -362,7 +344,7 @@ void filter_domains(
                 flag_len_noedge++;
         }
 
-        // Se ci sono vertici NON adiancenti su g e h aggiungo il bidomain
+        // If there are non adjacent vertices on g and h add the bidomain
         if (flag_len_noedge == arguments.arg_num) {
             vector<int*>vv(GRAPH_MAX);
             for (int i = 0; i < arguments.arg_num; i++) {
@@ -372,7 +354,7 @@ void filter_domains(
             add_bidomain(new_d, &vv[0], &len_noedge[0], old_bd->is_adjacent);
         }
 
-        // Se ci sono vertici adiacenti su g e h aggiungo il bidomain
+        // If there are adjacent vertices on g and h add the bidomain
         if (flag_len_edge == arguments.arg_num) {
             add_bidomain(new_d, old_bd->vv, &len_edge[0], true);
         }
@@ -451,7 +433,7 @@ int index_of_next_smallest(vector<int> &arr, int len, int w) {
 void solve(struct D &d, struct D &new_d, struct Bidomain *bd, int vertex[], int level, struct BidomainList *preallocated_lists) {
     int ng, r, c;
 
-    if (timeout == 1/* || cts.get_token().is_canceled()*/)
+    if (timeout == 1)
         return;
 
     r = (level - 1) % arguments.arg_num;
@@ -461,11 +443,6 @@ void solve(struct D &d, struct D &new_d, struct Bidomain *bd, int vertex[], int 
         if (arguments.verbose) show(d);
         nodes++;
 
-        /*if (d.domains->len == 2 && d.domains->vals[0].len[0] == 2 && d.domains->vals[0].vv[0][0] == 8 && d.domains->vals[0].vv[0][1] == 7) {
-            cout << "controllo" << endl;
-        }*/
-
-        //if (d.current->len > d.incumbent->len) {
         if (largest_incumbent.update(d.current->len)) {
             set_incumbent(d.current, d.incumbent);
             if (!arguments.quiet) {
@@ -473,7 +450,6 @@ void solve(struct D &d, struct D &new_d, struct Bidomain *bd, int vertex[], int 
             }
         }
 
-        //if (d.current->len + calc_bound(d.domains) <= d.incumbent->len)
         if (d.current->len + calc_bound(d.domains) <= largest_incumbent.value)
             return;
 
@@ -506,9 +482,6 @@ void solve(struct D &d, struct D &new_d, struct Bidomain *bd, int vertex[], int 
         bd->len[r]--;
         vertex[r] = -1;
         for (int i = 0; i <= bd->len[r]; i++) {
-            /*if (r == arguments.arg_num - 1) {
-                cout << "controllo" << endl;
-            }*/
             int idx = index_of_next_smallest(bd->vv[r], bd->len[r] + 1, vertex[r]);
             vertex[r] = bd->vv[r][idx];
 
@@ -539,221 +512,85 @@ void solve(struct D &d, struct D &new_d, struct Bidomain *bd, int vertex[], int 
         }
         bd->len[r]++;
 
-        // Qui occorrerebbe ricorrere evitando di fare match su un nodo del grafo
-        // corrente non solo saltare il nodo del primo grafo
-        //solve(d, &d, &bd, vertex, level+1);
 #if DEBUG
         printf ("2 >>> D AFTER FILTER DOMAINS\n"); show(d);
         printf ("2 >>> NEW_D AFTER FILTER DOMAINS\n"); show(*dP);
 #endif
     }
 }
-vector<dati_Solve *> coda_dati;
+vector<data_Solve *> data_queue;
 SecureQueue<int> sq;
-#if USING_WINDOWS
-vector<task<void>> tasks;
-#endif
-
-void win_parallel_solve(int indice) {
-
-    dati_Solve* data = coda_dati.at(indice);
-
-    solve(data->d, data->new_d, data->bd, &data->vertex[0], data->level, &data->preallocated_lists[0]);
-
-    return;
-
-    /*struct D d = data->d;
-    struct D new_d = data->new_d;
-    struct Bidomain* bd = &data->bd;
-    int* vertex = &data->vertex[0];
-    int level = data->level;
-    struct BidomainList* preallocated_lists = &data->preallocated_lists[0];
-
-    int ng, r, c;
-
-    if (timeout == 1)
-        return;
-
-    r = (level - 1) % arguments.arg_num;
-    c = (level - 1) / arguments.arg_num;
-
-    if (r == 0) {
-        if (arguments.verbose) show(d);
-        nodes++;
-
-        //if (d.current->len > d.incumbent->len) {
-        if (largest_incumbent.update(d.current->len)) {
-            set_incumbent(d.current, d.incumbent);
-            if (!arguments.quiet) printf("Incumbent size: %d\n", d.incumbent->len);
-        }
-
-        //if (d.current->len + calc_bound(d.domains) <= d.incumbent->len)
-        if (d.current->len + calc_bound(d.domains) <= largest_incumbent.value)
-            return;
-
-        struct Bidomain* bd = select_bidomain(d.domains, d.current->len);
-        if (bd == NULL)   // In the MCCS case, there may be nothing we can branch on
-            return;
-        struct Bidomain bd_copy;
-
-        vertex[0] = find_and_remove_min_value(bd->vv[0], bd->len[0]);
-        if (bd->len[0] == 0) {
-            bd_copy = *bd;
-            remove_bidomain(d.domains, bd);
-            bd = &bd_copy;
-        }
-
-        struct D new_d = d;
-        new_d.domains = &preallocated_lists[c + 1];
-
-        solve(d, new_d, bd, vertex, level + 1, preallocated_lists);
-        solve(d, new_d, bd, vertex, level + arguments.arg_num, preallocated_lists);
-#if DEBUG
-        printf("0 >>> D AFTER FILTER DOMAINS\n"); show(d);
-        printf("0 >>> NEW_D AFTER FILTER DOMAINS\n"); show(new_d);
-#endif
-    }
-
-    if (r > 0) {
-        // Try assigning v to each vertex w in bd->right_vv, in turn
-        bd->len[r]--;
-        vertex[r] = -1;
-        for (int i = 0; i <= bd->len[r]; i++) {
-            int idx = index_of_next_smallest(bd->vv[r], bd->len[r] + 1, vertex[r]);
-            vertex[r] = bd->vv[r][idx];
-
-            // swap w with the value just past the end of the right_vv array
-            bd->vv[r][idx] = bd->vv[r][bd->len[r]];
-            bd->vv[r][bd->len[r]] = vertex[r];
-
-            if (r == arguments.arg_num - 1) {
-                filter_domains(d.domains, new_d.domains, &d.g[0], vertex);
-                for (ng = 0; ng < arguments.arg_num; ng++) {
-                    d.current->vals[d.current->len].v[ng] = vertex[ng];
-                }
-                d.current->len++;
-
-                vector<int> new_vertex(GRAPH_MAX + 1);
-                array_copy(&new_vertex[0], vertex, arguments.arg_num);
-                solve(new_d, new_d, bd, &new_vertex[0], level + 1, preallocated_lists);
-
-                d.current->len--;
-            }
-            else {
-                solve(d, new_d, bd, vertex, level + 1, preallocated_lists);
-            }
-
-#if DEBUG
-            printf("1 >>> D AFTER FILTER DOMAINS\n"); show(d);
-            printf("1 >>> NEW_D AFTER FILTER DOMAINS\n"); show(*dP);
-#endif
-        }
-        bd->len[r]++;
-
-        // Qui occorrerebbe ricorrere evitando di fare match su un nodo del grafo
-        // corrente non solo saltare il nodo del primo grafo
-        //solve(d, &d, &bd, vertex, level+1);
-#if DEBUG
-        printf("2 >>> D AFTER FILTER DOMAINS\n"); show(d);
-        printf("2 >>> NEW_D AFTER FILTER DOMAINS\n"); show(*dP);
-#endif
-    }*/
-
-
-}
 
 void parallel_solve() {
-    int indice;
-    while ((indice = sq.pop()) != -1) {
-        win_parallel_solve(indice);
+    int index;
+    while ((index = sq.pop()) != -1) {
+        data_Solve* data = data_queue.at(index);
+        solve(data->d, data->new_d, data->bd, &data->vertex[0], data->level, &data->preallocated_lists[0]);
     }
 }
 
-void crea_dato(const struct D &d, const struct D &new_d, const struct Bidomain &bd_noRef, int vertex[], int level, int d_domain, int new_d_domain, vector<struct BidomainList> preallocated_lists, int b_pos) {
-    coda_dati.push_back(new dati_Solve());
-    dati_Solve *dati = coda_dati.back();
+void create_data(const struct D &d, const struct D &new_d, const struct Bidomain &bd_noRef, int vertex[], int level, int d_domain, int new_d_domain, vector<struct BidomainList> preallocated_lists, int b_pos) {
+    data_queue.push_back(new data_Solve());
+    data_Solve *data = data_queue.back();
 
-    dati->preallocated_lists.at(d_domain).len = d.domains->len;
+    data->preallocated_lists.at(d_domain).len = d.domains->len;
     for (int j = 0; j < d.domains->vals.size(); j++) {
         for (int k = 0; k < min(GRAPH_MAX, (int)d.domains->vals[j].len.size()); k++) {
-            dati->preallocated_lists[d_domain].vals[j].len[k] = d.domains->vals[j].len[k];
+            data->preallocated_lists[d_domain].vals[j].len[k] = d.domains->vals[j].len[k];
         }
-        dati->preallocated_lists[d_domain].vals[j].is_adjacent = d.domains->vals[j].is_adjacent;
+        data->preallocated_lists[d_domain].vals[j].is_adjacent = d.domains->vals[j].is_adjacent;
         for (int k = 0; k < d.domains->vals[j].vv.size(); k++) {
-            dati->preallocated_lists[d_domain].vals[j].vv[k] = d.domains->vals[j].vv[k];
+            data->preallocated_lists[d_domain].vals[j].vv[k] = d.domains->vals[j].vv[k];
         }
     }
-    dati->preallocated_lists.at(new_d_domain).len = new_d.domains->len;
+    data->preallocated_lists.at(new_d_domain).len = new_d.domains->len;
     for (int j = 0; j < new_d.domains->vals.size(); j++) {
         for (int k = 0; k < min(GRAPH_MAX, (int)new_d.domains->vals[j].len.size()); k++) {
-            dati->preallocated_lists[new_d_domain].vals[j].len[k] = new_d.domains->vals[j].len[k];
+            data->preallocated_lists[new_d_domain].vals[j].len[k] = new_d.domains->vals[j].len[k];
         }
-        dati->preallocated_lists[new_d_domain].vals[j].is_adjacent = new_d.domains->vals[j].is_adjacent;
+        data->preallocated_lists[new_d_domain].vals[j].is_adjacent = new_d.domains->vals[j].is_adjacent;
         for (int k = 0; k < new_d.domains->vals[j].vv.size(); k++) {
-            dati->preallocated_lists[new_d_domain].vals[j].vv[k] = new_d.domains->vals[j].vv[k];
+            data->preallocated_lists[new_d_domain].vals[j].vv[k] = new_d.domains->vals[j].vv[k];
         }
     }
-    dati->incombenti.len = d.incumbent->len;
+    data->incumbents.len = d.incumbent->len;
     for(int i=0; i<MAX_N; i++) {
         for(int j=0; j<d.incumbent->vals[i].v.size(); j++) {
-            dati->incombenti.vals[i].v[j] = d.incumbent->vals[i].v[j];
+            data->incumbents.vals[i].v[j] = d.incumbent->vals[i].v[j];
         }
     }
-    dati->correnti.len = d.current->len;
+    data->currents.len = d.current->len;
     for(int i=0; i<MAX_N; i++) {
         for(int j=0; j<d.current->vals[i].v.size(); j++) {
-            dati->correnti.vals[i].v[j] = d.current->vals[i].v[j];
+            data->currents.vals[i].v[j] = d.current->vals[i].v[j];
         }
     }
 
 
 
     for(int i=0; i<d.g.size(); i++) {
-        dati->new_d.g[i] = dati->d.g[i] = d.g[i];
+        data->new_d.g[i] = data->d.g[i] = d.g[i];
     }
-    dati->new_d.incumbent = &dati->incombenti;
-    dati->d.incumbent = &dati->incombenti;
-    dati->new_d.current = &dati->correnti;
-    dati->d.current = &dati->correnti;
-    dati->d.domains = &dati->preallocated_lists[d_domain];
-    dati->new_d.domains = &dati->preallocated_lists[new_d_domain];
+    data->new_d.incumbent = &data->incumbents;
+    data->d.incumbent = &data->incumbents;
+    data->new_d.current = &data->currents;
+    data->d.current = &data->currents;
+    data->d.domains = &data->preallocated_lists[d_domain];
+    data->new_d.domains = &data->preallocated_lists[new_d_domain];
 
-    dati->level = level;
-    array_copy(&dati->vertex[0], vertex, arguments.arg_num);
+    data->level = level;
+    array_copy(&data->vertex[0], vertex, arguments.arg_num);
 
-    dati->bd = &dati->d.domains->vals[b_pos];
-    /*
-    for (int i=0; i < min(GRAPH_MAX, (int)bd_noRef.len.size()); i++) {
-        dati->bd.len[i] = bd_noRef.len[i];
-    }
+    data->bd = &data->d.domains->vals[b_pos];
 
-    for(int i=0; i < bd_noRef.vv.size(); i++) {
-        dati->bd.vv[i] = bd_noRef.vv[i];
-    }
-
-    dati->bd.is_adjacent = bd_noRef.is_adjacent;
-    */
-
-    int dim = coda_dati.size() - 1;
-#if !USING_WINDOWS
+    int dim = data_queue.size() - 1;
     sq.push(dim);
-#endif
-
-#if USING_WINDOWS
-    tasks.push_back(
-        create_task(
-            [dim]() -> void {
-                return win_parallel_solve(dim);
-            }
-        )
-    );
-#endif
 }
 
-void nuova_starting_solve(struct D &d, struct D &new_d, struct Bidomain *bd, int vertex[], int level, vector<struct BidomainList> &preallocated_lists, int bidomain_position) {
+void new_starting_solve(struct D &d, struct D &new_d, struct Bidomain *bd, int vertex[], int level, vector<struct BidomainList> &preallocated_lists, int bidomain_position) {
     int ng, r, c;
 
-    if (timeout == 1/* || cts.get_token().is_canceled()*/)
+    if (timeout == 1)
         return;
 
     r = (level - 1) % arguments.arg_num;
@@ -788,9 +625,8 @@ void nuova_starting_solve(struct D &d, struct D &new_d, struct Bidomain *bd, int
         struct D new_d = d;
         new_d.domains = &preallocated_lists[c + 1];
 
-        nuova_starting_solve(d, new_d, bd, vertex, level+1, preallocated_lists, bidomain_position);
-        //crea_dato(d, new_d, *bd, vertex, level + arguments.arg_num, 0, 1, preallocated_lists);
-        nuova_starting_solve(d, new_d, bd, vertex, level + arguments.arg_num, preallocated_lists, bidomain_position);
+        new_starting_solve(d, new_d, bd, vertex, level+1, preallocated_lists, bidomain_position);
+        new_starting_solve(d, new_d, bd, vertex, level + arguments.arg_num, preallocated_lists, bidomain_position);
 #if DEBUG
         printf ("0 >>> D AFTER FILTER DOMAINS\n"); show(d);
         printf ("0 >>> NEW_D AFTER FILTER DOMAINS\n"); show(new_d);
@@ -819,12 +655,11 @@ void nuova_starting_solve(struct D &d, struct D &new_d, struct Bidomain *bd, int
 
 
                 new_d.current = d.current;
-                crea_dato(new_d, new_d, *bd, vertex, level+1, 1, 1, preallocated_lists, bidomain_position);
+                create_data(new_d, new_d, *bd, vertex, level+1, 1, 1, preallocated_lists, bidomain_position);
 
                 d.current->len--;
             } else {
-                //nuova_starting_solve(d, new_d, bd, vertex, level+1, preallocated_lists);
-                crea_dato(d, new_d,  *bd, vertex, level+1, 0, 1, preallocated_lists, bidomain_position);
+                create_data(d, new_d,  *bd, vertex, level+1, 0, 1, preallocated_lists, bidomain_position);
             }
 
 #if DEBUG
@@ -833,10 +668,6 @@ void nuova_starting_solve(struct D &d, struct D &new_d, struct Bidomain *bd, int
 #endif
         }
         bd->len[r]++;
-
-        // Qui occorrerebbe ricorrere evitando di fare match su un nodo del grafo
-        // corrente non solo saltare il nodo del primo grafo
-        //solve(d, &d, &bd, vertex, level+1);
 #if DEBUG
 printf ("2 >>> D AFTER FILTER DOMAINS\n"); show(d);
 printf ("2 >>> NEW_D AFTER FILTER DOMAINS\n"); show(*dP);
@@ -848,22 +679,14 @@ std::vector <thread> threads;
 
 
 void startParallel(int nThread, struct D &d, struct D &new_d, int vertex[], int level) {
-#if !USING_WINDOWS
     for (int i = 0; i < nThread-1; i++) {
         threads.emplace_back(&parallel_solve);
     }
-#endif
 
     vector<BidomainList> pre_alloc (biggest_graph+1);
     pre_alloc.at(0).vals = d.domains->vals;
     pre_alloc.at(0).len = d.domains->len;
-    nuova_starting_solve(d, new_d, NULL, vertex, level, pre_alloc, -1);
-#if USING_WINDOWS
-    for (int i = 0; i < tasks.size(); i++) {
-        tasks[i].wait();
-    }
-    return;
-#else
+    new_starting_solve(d, new_d, NULL, vertex, level, pre_alloc, -1);
     for (int i = 0; i < nThread; i++) {
         sq.push(-1);
     }
@@ -871,7 +694,6 @@ void startParallel(int nThread, struct D &d, struct D &new_d, int vertex[], int 
     for (int i = 0; i < nThread-1; i++) {
         threads.at(i).join();
     }
-#endif
 }
 
 void mcs(vector<struct Graph *> g) {
@@ -954,48 +776,6 @@ bool check_sol(struct Graph *g[], struct VtxPairList *solution) {
     return true;
 }
 
-void parse(char key, char* val, int& counter) {
-    switch (key) {
-    case 'v':
-        arguments.verbose = true;
-        break;
-    case 'l':
-        arguments.lad = true;
-        if (arguments.lad && arguments.dimacs) {
-            exit(-200);
-        }
-        break;
-    case 'd':
-        arguments.dimacs = true;
-        if (arguments.lad && arguments.dimacs) {
-            exit(-200);
-        }
-        break;
-    case 't':
-        arguments.timeout = atoi(val);
-        counter++;
-        break;
-    case 'a':
-        arguments.filename.push_back(val);
-        arguments.arg_num++;
-        break;
-    }
-}
-
-void arg_parse(int argc, char** argv) {
-    for (int i = 1; i < argc; i++) {
-
-        if (argv[i][0] == '-') {
-            parse(argv[i][1], argv[i + 1], i);
-        }
-        else
-        {
-            parse('a', argv[i], i);
-        }
-
-    }
-}
-
 int main(int argc, char **argv) {
     int i;
 
@@ -1010,11 +790,7 @@ int main(int argc, char **argv) {
 #endif
 
     set_default_arguments();
-#if USING_WINDOWS
-    arg_parse(argc, argv);
-#else
     argp_parse(&argp, argc, argv, 0, 0, 0);
-#endif //USING_WINDOWS
 
     if (arguments.arg_num < 2) {
         return 1;
@@ -1040,17 +816,8 @@ int main(int argc, char **argv) {
     clock_t start = clock();
 
     if (arguments.timeout > 0) {
-#if USING_WINDOWS
-        create_task(
-            []() -> void {
-                Sleep(1000 * arguments.timeout);
-                timeout = 1;
-            }
-        );
-#else
 #ifdef SIGALRM
         alarm(arguments.timeout);
-#endif
 #endif
     }
 
@@ -1061,28 +828,27 @@ int main(int argc, char **argv) {
     auto stop = steady_clock::now();
     auto total_time_elapsed = duration_cast<milliseconds>(stop - beginning).count();
 
-    int indice = -1, best = -1, size = coda_dati.size();
-    for(int i=0; i<coda_dati.size(); i++) {
-        if(coda_dati.at(i)->d.incumbent->len > best) {
-            best = coda_dati.at(i)->d.incumbent->len;
-            indice = i;
+    int index = -1, best = -1, size = data_queue.size();
+    for(int i=0; i<data_queue.size(); i++) {
+        if(data_queue.at(i)->d.incumbent->len > best) {
+            best = data_queue.at(i)->d.incumbent->len;
+            index = i;
         }
     }
     if (timeout == 1) {
         cout << "Esecuzione interrotta in seguito a timeout!" << endl;
     }
-    if (indice == -1) {
+    if (index == -1) {
         cout << "Nessuna soluzione trovata!" << endl;
         return 1;
     }
 
-    struct VtxPairList *solution = coda_dati.at(indice)->d.incumbent;
+    struct VtxPairList *solution = data_queue.at(index)->d.incumbent;
 
     clock_t time_elapsed = clock() - start;
 
     if (!check_sol(&g[0], solution))
         fprintf(stderr, "*** Error: Invalid solution\n");
-    //fail("*** Error: Invalid solution\n");
 
     printf("Solution size %d\n", solution->len);
     for (int i = 0; i < g[0]->n; i++)
@@ -1117,8 +883,8 @@ int main(int argc, char **argv) {
     for (i = 0; i < arguments.arg_num; i++) {
         free(g[i]);
     }
-    for (i=0; i<coda_dati.size(); i++) {
-        free(coda_dati[i]);
+    for (i=0; i<data_queue.size(); i++) {
+        free(data_queue[i]);
     }
 
     printf(">>> %d - %f\n", solution->len, (float) total_time_elapsed/1000);
