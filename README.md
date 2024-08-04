@@ -1,5 +1,12 @@
 # McSplit Multigraph
 
+Please refer to the following paper for a complete description of the tools:
+
+L. Cardone, S. Quer, "The Multi-Maximum and Quasi-Maximum Common Subgraph Problem," Computation, Publisher MDPI AG, Switzerland, Vol. 11., No. 4, 2023, pp. 69-94, https://www.mdpi.com/2079-3197/11/4/69, ISSN: 2079-3197,
+DOI: 10.3390/computation11040069
+
+The repository includes the following tools
+
 ## [Quer](https://github.com/Lorenzo-Cardone/McSplit_Multigraph/tree/Quer)
 Custom implementation, little to no optimizations, only sequential, written in C.
 
